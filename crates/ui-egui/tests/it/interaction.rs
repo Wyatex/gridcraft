@@ -1450,6 +1450,22 @@ fn plain_open_warning_becomes_an_info_notice() {
 }
 
 #[test]
+fn legacy_xls_import_notice_can_be_suppressed_by_the_host() {
+    let warning = "Imported from an Excel 97-2003 (.xls) workbook: values, formulas, cell formatting, merged cells, column widths, row heights and defined names were read. Charts, pictures, comments and other features are not imported yet. Save as .xlsx; saving .xls is not supported.";
+    let mut h = harness(blank());
+    h.state_mut().show_open_warnings(&json!({"warnings": [warning]}));
+    assert!(h.state().notice.is_some(), "the notice is shown by default");
+
+    h.state_mut().show_xls_import_notice = false;
+    h.state_mut().show_open_warnings(&json!({"warnings": [warning]}));
+    assert!(h.state().notice.is_none(), "a host can hide only the legacy-XLS compatibility notice");
+
+    h.state_mut().session.ui_requests.push(gridcraft_engine::UiRequest::Message(warning.into()));
+    h.state_mut().after_engine();
+    assert!(h.state().message.is_none(), "the same setting also suppresses the modal message");
+}
+
+#[test]
 fn macros_dialog_lists_vba_and_scripts() {
     let mut s = blank();
     let mut wb = gridcraft_engine::model::Workbook::new();

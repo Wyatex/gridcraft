@@ -1,5 +1,11 @@
 use super::{Json, Notice, NoticeKind, OpenWindow, SheetApp, clean_error, json};
 
+pub(super) const XLS_IMPORT_NOTICE_PREFIX: &str = "Imported from an Excel 97-2003 (.xls) workbook:";
+
+pub(super) fn is_xls_import_notice(message: &str) -> bool {
+    message.starts_with(XLS_IMPORT_NOTICE_PREFIX)
+}
+
 impl SheetApp {
     pub fn open_path(&mut self, path: &str) {
         match self.run("file.open", json!({"path": path})) {
@@ -35,7 +41,8 @@ impl SheetApp {
             self.notice = None;
             return;
         };
-        let msgs: Vec<&str> = list.iter().filter_map(Json::as_str).collect();
+        let msgs: Vec<&str> =
+            list.iter().filter_map(Json::as_str).filter(|message| self.show_xls_import_notice || !is_xls_import_notice(message)).collect();
         if msgs.is_empty() {
             // A clean open clears any notice left over from the previous document.
             self.notice = None;

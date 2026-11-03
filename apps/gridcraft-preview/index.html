@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GridCraft Preview - Development</title>
+  <link data-trunk rel="icon" href="../../assets/app-icon/gridcraft.ico" />
+  <link data-trunk rel="rust" data-bin="gridcraft-preview" data-wasm-opt="z" data-weak-refs />
+  <style>
+    :root { color-scheme: light; font: 14px system-ui, sans-serif; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #f3f3f3; }
+    #canvas_stage { position: absolute; inset: 0; }
+    #gridcraft_canvas { width: 100%; height: 100%; display: block; }
+    #gridcraft_canvas.modal-canvas {
+      position: static !important; inset: auto !important; width: 100% !important; height: 100% !important;
+    }
+    #gridcraft_loading {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #555; pointer-events: none;
+    }
+    #controls {
+      position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; gap: 6px;
+      align-items: center; padding: 8px; background: rgba(255,255,255,.96); border: 1px solid #d7d7d7;
+      border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,.14);
+    }
+    #controls button, #controls select {
+      border: 1px solid #c9c9c9; border-radius: 5px; background: #fff; padding: 6px 9px;
+      cursor: pointer; font: inherit;
+    }
+    #controls button:hover, #controls select:hover { border-color: #238636; }
+    #fileInput { display: none; }
+    #preview_modal {
+      position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+      padding: 5vh 5vw; background: rgba(0,0,0,.42);
+    }
+    #preview_modal[hidden] { display: none; }
+    .preview-dialog {
+      width: min(1100px, 94vw); height: min(760px, 90vh); display: flex; flex-direction: column;
+      overflow: hidden; background: #fff; border-radius: 10px; box-shadow: 0 12px 50px rgba(0,0,0,.3);
+    }
+    .preview-dialog-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 14px; border-bottom: 1px solid #ddd; color: #222;
+    }
+    .preview-dialog-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #close_preview { border: 0; border-radius: 5px; padding: 5px 9px; background: #eee; cursor: pointer; }
+    #modal_canvas_host { min-height: 0; flex: 1; background: #fff; }
+  </style>
+</head>
+<body>
+  <div id="canvas_stage"><canvas id="gridcraft_canvas"></canvas></div>
+  <div id="gridcraft_loading">Loading GridCraft Preview&hellip;</div>
+
+  <div id="controls" hidden>
+    <button id="open_file" type="button">选择本地文件</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv,.tsv,.txt,.json" />
+    <button id="zoom_out" type="button" aria-label="Zoom out">−</button>
+    <button id="zoom_in" type="button" aria-label="Zoom in">＋</button>
+    <button id="zoom_fit" type="button">适应窗口</button>
+    <select id="langSelect" aria-label="Language">
+      <option value="en">English</option>
+      <option value="zh">简体中文</option>
+      <option value="es">Español</option>
+      <option value="ja">日本語</option>
+    </select>
+    <select id="themeSelect" aria-label="Theme">
+      <option value="auto">跟随系统主题</option>
+      <option value="light">浅色</option>
+      <option value="dark">深色</option>
+    </select>
+  </div>
+
+  <div id="preview_modal" hidden role="dialog" aria-modal="true" aria-labelledby="preview_title">
+    <div class="preview-dialog">
+      <div class="preview-dialog-header">
+        <strong id="preview_title">GridCraft Preview</strong>
+        <button id="close_preview" type="button">关闭</button>
+      </div>
+      <div id="modal_canvas_host"></div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('gridcraft_canvas');
+      const stage = document.getElementById('canvas_stage');
+      const modal = document.getElementById('preview_modal');
+      const modalCanvasHost = document.getElementById('modal_canvas_host');
+      const fileInput = document.getElementById('fileInput');
+      const controls = document.getElementById('controls');
+      let apiReady = false;
+
+      function createPreviewApi() {
+        if (window.gridcraftPreview) { apiReady = true; return true; }
+        const Preview = window.wasmBindings && window.wasmBindings.GridCraftPreview;
+        if (!Preview) return false;
+        try {
+          window.gridcraftPreview = new Preview();
+          apiReady = true;
+          return true;
+        } catch (error) {
+          console.error('Could not create GridCraftPreview:', error);
+          return false;
+        }
+      }
+
+      function getApi() {
+        if (!apiReady && !createPreviewApi()) throw new Error('GridCraft Preview is still starting');
+        return window.gridcraftPreview;
+      }
+
+      function showPreview(file) {
+        modalCanvasHost.appendChild(canvas);
+        canvas.classList.add('modal-canvas');
+        modal.hidden = false;
+        document.getElementById('preview_title').textContent = file.name;
+      }
+
+      function closePreview() {
+        stage.appendChild(canvas);
+        canvas.classList.remove('modal-canvas');
+        modal.hidden = true;
+      }
+
+      document.getElementById('open_file').addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        try {
+          showPreview(file);
+          await getApi().loadFile(file);
+        } catch (error) {
+          closePreview();
+          alert('文件加载失败: ' + (error && error.message ? error.message : error));
+        } finally {
+          fileInput.value = '';
+        }
+      });
+      document.getElementById('close_preview').addEventListener('click', closePreview);
+      document.getElementById('zoom_in').addEventListener('click', () => getApi().zoomIn());
+      document.getElementById('zoom_out').addEventListener('click', () => getApi().zoomOut());
+      document.getElementById('zoom_fit').addEventListener('click', () => getApi().zoomToFit());
+      document.getElementById('langSelect').addEventListener('change', (event) => getApi().setLanguage(event.target.value));
+      document.getElementById('themeSelect').addEventListener('change', (event) => getApi().setTheme(event.target.value));
+
+      // Trunk exposes wasm-bindgen exports here after the module has initialized.
+      window.addEventListener('TrunkApplicationStarted', createPreviewApi, { once: true });
+      window.addEventListener('gridcraft-preview-ready', () => {
+        createPreviewApi();
+        controls.hidden = false;
+        const loading = document.getElementById('gridcraft_loading');
+        if (loading) loading.remove();
+      }, { once: true });
+      createPreviewApi();
+    })();
+  </script>
+</body>
+</html>

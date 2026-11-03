@@ -2124,6 +2124,25 @@ name = "gridcraft-pdf"
 version = "0.16.0"
 
 [[package]]
+name = "gridcraft-preview"
+version = "0.16.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "gridcraft-engine",
+ "gridcraft-ui-egui",
+ "js-sys",
+ "log",
+ "once_cell",
+ "rfd",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "gridcraft-ui-egui"
 version = "0.16.0"
 dependencies = [

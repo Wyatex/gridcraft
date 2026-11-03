@@ -218,6 +218,9 @@ pub struct SheetApp {
     pub toast: Option<(String, f64)>,
     /// Dismissible info bar under the ribbon (open-time notices).
     pub notice: Option<Notice>,
+    /// Whether the informational warning emitted when importing legacy `.xls` files is shown.
+    /// Hosts that present their own import status can turn this off without hiding other warnings.
+    pub show_xls_import_notice: bool,
     pub services: Services,
     pub printing: printing::State,
     print_feedback_seen: Option<printing::Feedback>,

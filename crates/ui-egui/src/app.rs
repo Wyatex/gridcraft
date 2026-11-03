@@ -40,6 +40,7 @@ impl SheetApp {
             message: None,
             toast: None,
             notice: None,
+            show_xls_import_notice: true,
             services,
             printing: Default::default(),
             print_feedback_seen: None,

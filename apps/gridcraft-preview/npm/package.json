@@ -1,0 +1,45 @@
+{
+  "name": "gridcraft-preview",
+  "version": "0.1.0",
+  "description": "Read-only XLSX/XLS spreadsheet viewer for the web, powered by GridCraft",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "prepare": "npm run build",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "xlsx",
+    "xls",
+    "spreadsheet",
+    "excel",
+    "viewer",
+    "preview",
+    "wasm",
+    "webassembly",
+    "gridcraft"
+  ],
+  "author": "ArtCraft Team",
+  "license": "(MIT OR Apache-2.0)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/storytold/gridcraft.git",
+    "directory": "apps/gridcraft-preview"
+  },
+  "bugs": {
+    "url": "https://github.com/storytold/gridcraft/issues"
+  },
+  "homepage": "https://getartcraft.com/apps/gridcraft",
+  "devDependencies": {},
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

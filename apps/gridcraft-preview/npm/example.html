@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GridCraft Preview - Example</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+    }
+
+    .header {
+      background: white;
+      border-bottom: 1px solid #ddd;
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button, select, input[type="file"] {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #f0f0f0;
+      border-color: #1f9d55;
+    }
+
+    button:active {
+      background: #e0e0e0;
+    }
+
+    select {
+      cursor: pointer;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+    }
+
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-input-label {
+      padding: 8px 16px;
+      border: 1px solid #1f9d55;
+      border-radius: 4px;
+      background: #1f9d55;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-block;
+      transition: all 0.2s;
+    }
+
+    .file-input-label:hover {
+      background: #188a47;
+    }
+
+    .container {
+      height: calc(100vh - 120px);
+      padding: 0;
+    }
+
+    #gridcraft_canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: white;
+    }
+
+    #gridcraft_loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #666;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1f9d55;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .info {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 12px;
+      margin: 16px 24px;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #1565c0;
+    }
+
+    .status {
+      background: #fff9e6;
+      border: 1px solid #ffc107;
+      padding: 12px;
+      margin: 16px 24px;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #f57f17;
+      display: none;
+    }
+
+    .status.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>GridCraft Preview Example</h1>
+
+    <div class="controls">
+      <div class="control-group">
+        <div class="file-input-wrapper">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.xlsm" />
+          <label for="fileInput" class="file-input-label">📁 Open File</label>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <button onclick="zoomOut()">🔍− Zoom Out</button>
+        <button onclick="zoomIn()">🔍+ Zoom In</button>
+        <button onclick="zoomFit()">⬜ Fit Window</button>
+      </div>
+
+      <div class="control-group">
+        <select id="langSelect" onchange="changeLanguage(this.value)">
+          <option value="en">🇬🇧 English</option>
+          <option value="zh">🇨🇳 简体中文</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="ko">🇰🇷 한국어</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="de">🇩🇪 Deutsch</option>
+        </select>
+
+        <select id="themeSelect" onchange="changeTheme(this.value)">
+          <option value="auto">💡 Auto Theme</option>
+          <option value="light">☀️ Light</option>
+          <option value="dark">🌙 Dark</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="info">
+    <strong>Read-only Preview:</strong> This is a demonstration of gridcraft-preview.
+    All editing features are disabled. You can view, zoom, search, and copy, but cannot modify the spreadsheet.
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="container">
+    <canvas id="gridcraft_canvas"></canvas>
+    <div id="gridcraft_loading">
+      <div class="spinner"></div>
+      <div>Loading GridCraft Preview...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import from the built package
+    // In production, this would be: import init, { GridCraftPreview } from 'gridcraft-preview';
+    import init, { GridCraftPreview } from './dist/index.js';
+
+    let preview = null;
+
+    // Initialize
+    (async () => {
+      try {
+        await init();
+        preview = new GridCraftPreview();
+        window.preview = preview; // For console debugging
+
+        showStatus('GridCraft Preview ready! Drop a file or use the Open File button.', 'success');
+
+        // Hide loading after a moment
+        setTimeout(() => {
+          document.getElementById('gridcraft_loading').style.display = 'none';
+        }, 500);
+      } catch (err) {
+        showStatus('Failed to initialize: ' + err.message, 'error');
+        console.error(err);
+      }
+    })();
+
+    // File input
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file && preview) {
+        try {
+          showStatus(`Loading ${file.name}...`, 'info');
+          await preview.loadFile(file);
+          showStatus(`Loaded ${file.name} successfully!`, 'success');
+
+          // Log sheet names
+          const sheets = preview.getSheetNames();
+          console.log('Sheets:', sheets);
+        } catch (err) {
+          showStatus('Failed to load file: ' + err.message, 'error');
+          console.error(err);
+        }
+      }
+    });
+
+    // Drag and drop
+    document.body.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+
+    document.body.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file && preview) {
+        try {
+          showStatus(`Loading ${file.name}...`, 'info');
+          await preview.loadFile(file);
+          showStatus(`Loaded ${file.name} successfully!`, 'success');
+        } catch (err) {
+          showStatus('Failed to load file: ' + err.message, 'error');
+          console.error(err);
+        }
+      }
+    });
+
+    // Control functions
+    window.zoomIn = () => preview?.zoomIn();
+    window.zoomOut = () => preview?.zoomOut();
+    window.zoomFit = () => preview?.zoomToFit();
+    window.changeLanguage = (lang) => preview?.setLanguage(lang);
+    window.changeTheme = (theme) => preview?.setTheme(theme);
+
+    // Status display
+    function showStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = 'status show ' + type;
+
+      // Auto-hide after 5 seconds for success messages
+      if (type === 'success') {
+        setTimeout(() => {
+          status.classList.remove('show');
+        }, 5000);
+      }
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+          case '=':
+          case '+':
+            e.preventDefault();
+            preview?.zoomIn();
+            break;
+          case '-':
+            e.preventDefault();
+            preview?.zoomOut();
+            break;
+          case '0':
+            e.preventDefault();
+            preview?.zoomToFit();
+            break;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

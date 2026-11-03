@@ -290,6 +290,7 @@ impl SheetApp {
         for req in self.session.take_ui_requests() {
             match req {
                 UiRequest::Dialog(name, params) => self.open_dialog(&name, params),
+                UiRequest::Message(m) if !self.show_xls_import_notice && super::files::is_xls_import_notice(&m) => {}
                 UiRequest::Message(m) => self.message = Some(("GridCraft".into(), m)),
                 UiRequest::EditCell(text) => {
                     let text = text.map(|text| {
