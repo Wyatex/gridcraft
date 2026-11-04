@@ -67,7 +67,7 @@ apps/gridcraft-preview/
 ├── src/
 │   ├── main.rs               # 入口点
 │   ├── web.rs                # 浏览器 shell，eframe 配置
-│   ├── preview_session.rs    # 命令过滤器（只读强制）
+│   ├── preview_session.rs    # 只读 Session 包装器
 │   ├── preview_ui.rs         # UI 配置
 │   └── preview_api.rs        # JavaScript API (wasm-bindgen)
 ├── npm/                      # NPM 包
@@ -91,13 +91,10 @@ apps/gridcraft-preview/
 
 ### 只读强制机制
 
-1. **命令过滤** (`preview_session.rs`)
-   ```rust
-   const ALLOWED_COMMANDS: &[&str] = &[
-       "view.zoom", "selection.set", "sheet.activate",
-       "search.find", "home.copy", "ui.setLanguage", ...
-   ];
-   ```
+1. **引擎只读策略** (`Session::set_read_only`)
+   - 预览启动时启用 Session 级只读策略
+   - 通过白名单保留导航、视图、查询和复制命令
+   - 编辑命令在引擎边界拒绝，覆盖 API、键盘和粘贴入口
 
 2. **UI 配置** (`preview_ui.rs`)
    - 隐藏 File 标签和编辑功能区
@@ -253,7 +250,7 @@ git push origin preview-v0.1.0
 
 **已完成** ✅:
 - ✅ WASM 构建基础设施
-- ✅ 只读模式命令过滤
+- ✅ 引擎级只读模式
 - ✅ UI 配置和定制
 - ✅ NPM 打包系统
 - ✅ TypeScript 类型定义

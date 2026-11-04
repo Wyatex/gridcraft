@@ -9,6 +9,9 @@ pub(crate) const DRAFT_CODE_HIDDEN: &str = "Sheet protection now hides the code 
 impl SheetApp {
     /// Starts editing the active cell. `text` replaces the content (typing) or pre-fills it.
     pub fn begin_edit(&mut self, text: Option<String>, from_formula_bar: bool) {
+        if self.read_only {
+            return;
+        }
         // The source formula is display-only on spill children. Grid replacement keeps its
         // existing behavior, but no formula-bar entry path may edit that displayed formula.
         if from_formula_bar && formula_bar::active_spill_anchor(self).is_some() {
@@ -79,6 +82,10 @@ impl SheetApp {
     /// showing, that window stays active afterwards; a draft its own workbook refuses
     /// (validation, a bad formula) brings its window back to the front with the draft still open.
     pub fn commit_edit(&mut self, dr: i64, dc: i64, array: bool, fill_selection: bool) -> bool {
+        if self.read_only {
+            self.cancel_edit();
+            return true;
+        }
         let Some((doc, window)) = self.editor.as_ref().map(|ed| (ed.doc, ed.window)) else { return true };
         if !self.draft_elsewhere() {
             return self.commit_edit_here(dr, dc, array, fill_selection);
@@ -287,6 +294,9 @@ impl SheetApp {
     /// yet for a cell that isn't a Python cell. A cell inside a spill isn't edited, as with the
     /// formula bar's other entry paths.
     pub fn begin_python_edit(&mut self) {
+        if self.read_only {
+            return;
+        }
         if formula_bar::active_spill_anchor(self).is_some() {
             return;
         }
@@ -321,6 +331,9 @@ impl SheetApp {
     /// Ctrl+Alt+Shift+P (and the PY badge): Python mode on or off. An edit in progress keeps its
     /// text; with no edit, Python mode starts on the active cell.
     pub fn toggle_python_mode(&mut self) {
+        if self.read_only {
+            return;
+        }
         if self.editor.as_ref().is_some_and(|ed| !ed.python && self.draft_in_spill(ed)) {
             return;
         }
@@ -362,6 +375,10 @@ impl SheetApp {
     /// longer than a cell holds), its message shows and the edit stays open with the code as
     /// typed.
     pub fn commit_python_edit(&mut self) -> bool {
+        if self.read_only {
+            self.cancel_edit();
+            return true;
+        }
         let Some(mut ed) = self.editor.take() else { return true };
         self.session.mode = gridcraft_engine::Mode::Ready;
         if !self.follow_draft_sheet(&mut ed) {
@@ -454,6 +471,19 @@ mod protected_cell_tests {
 
     fn protected_message(app: &SheetApp) -> Option<&str> {
         app.message.as_ref().map(|(_, m)| m.as_str())
+    }
+
+    #[test]
+    fn read_only_preview_does_not_open_or_commit_cell_edits() {
+        let mut app = protected_book();
+        app.set_read_only(true);
+
+        app.begin_edit(Some("blocked".into()), false);
+
+        assert!(app.editor.is_none());
+        assert!(app.run("cell.set", json!({"cell": "C2", "input": "blocked"})).is_err());
+        assert_eq!(value(&app, "C2"), Value::text("keep"));
+        assert!(app.run("selection.set", json!({"cell": "C2"})).is_ok());
     }
 
     #[test]

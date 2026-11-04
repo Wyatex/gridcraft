@@ -460,6 +460,9 @@ pub type TextWidth = Arc<dyn Fn(&str, &model::Font, bool) -> f32 + Send + Sync>;
 #[derive(Default)]
 pub struct Session {
     docs: Vec<DocState>,
+    /// When enabled, only commands that inspect or navigate the workbook may run.
+    /// Hosts such as the preview viewer use this to enforce read-only access at the engine boundary.
+    read_only: bool,
     /// Index in `docs` of the active window's workbook.
     active: usize,
     /// Windows on the open workbooks ([`windows`]); every workbook has at least one.
@@ -530,9 +533,73 @@ pub struct Session {
     pub text_width: Option<TextWidth>,
 }
 
+/// Commands that keep a read-only host useful without changing workbook content.
+///
+/// This is intentionally an allowlist. New engine commands remain blocked in a read-only
+/// session until their behavior has been reviewed and explicitly added here.
+fn read_only_command(id: &str) -> bool {
+    matches!(
+        id,
+        "file.open"
+            | "selection.set"
+            | "selection.move"
+            | "selection.next"
+            | "selection.currentRegion"
+            | "selection.row"
+            | "selection.column"
+            | "edit.selectAll"
+            | "edit.goTo"
+            | "edit.goToSpecial"
+            | "edit.copy"
+            | "edit.clearClipboard"
+            | "edit.find"
+            | "sheet.activate"
+            | "sheet.next"
+            | "sheet.previous"
+            | "view.normal"
+            | "view.pageBreakPreview"
+            | "view.pageLayout"
+            | "view.ruler"
+            | "view.split"
+            | "view.gridlines"
+            | "view.headings"
+            | "view.rightToLeft"
+            | "view.showZeros"
+            | "view.showOutlineSymbols"
+            | "view.showObjects"
+            | "view.freezePanes"
+            | "view.freezeTopRow"
+            | "view.freezeFirstColumn"
+            | "view.unfreezePanes"
+            | "view.zoom"
+            | "view.zoom100"
+            | "view.zoomToSelection"
+            | "view.formulaBar"
+            | "view.statusBar"
+            | "search.find"
+            | "search.findNext"
+            | "search.findPrevious"
+            | "document.inspect"
+            | "sheet.read"
+            | "cell.get"
+            | "selection.stats"
+            | "app.commands"
+    )
+}
+
 impl Session {
     pub fn new() -> Session {
         Session::default()
+    }
+
+    /// Enables or disables the session-wide read-only command policy.
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+    }
+
+    /// Whether this session refuses workbook-editing commands.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
     pub fn documents(&self) -> &[DocState] {
         &self.docs
@@ -666,6 +733,9 @@ impl Session {
     /// Panics inside commands are caught and reported; the workbook is restored.
     pub fn execute(&mut self, id: &str, params: Json) -> Result<Json> {
         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+        if self.read_only && !read_only_command(id) {
+            return Err(EngineError::Disabled(id.to_string(), "the workbook is read-only".into()));
+        }
         if let Err(why) = (spec.enabled)(self) {
             return Err(EngineError::Disabled(id.to_string(), why));
         }

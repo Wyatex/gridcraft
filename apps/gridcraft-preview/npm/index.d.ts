@@ -128,6 +128,20 @@ export class GridCraftPreview {
   setZoom(percentage: number): void;
 
   /**
+   * Enable or disable workbook editing. The preview starts read-only by default.
+   *
+   * @param editable - Whether cell and workbook editing should be enabled
+   */
+  setEditable(editable: boolean): void;
+
+  /**
+   * Configure whether the workbook is read-only.
+   *
+   * @param readOnly - Whether editing should be blocked
+   */
+  setReadOnly(readOnly: boolean): void;
+
+  /**
    * Get names of all sheets in the workbook.
    *
    * @returns Array of sheet names

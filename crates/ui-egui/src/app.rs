@@ -30,6 +30,7 @@ impl SheetApp {
     pub fn new(session: Session, services: Services) -> SheetApp {
         SheetApp {
             session,
+            read_only: false,
             ui: UiState::default(),
             chrome: Chrome::default(),
             views: HashMap::new(),
@@ -86,6 +87,17 @@ impl SheetApp {
             arrange_windows: None,
             #[cfg(not(target_arch = "wasm32"))]
             updates_rt: Default::default(),
+        }
+    }
+
+    /// Switches the host into or out of viewer mode. The engine policy is kept in sync so direct
+    /// session calls from grid interactions are blocked as well as commands routed through the UI.
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+        self.session.set_read_only(read_only);
+        if read_only {
+            self.cancel_edit();
+            self.cancel_text_box_edit();
         }
     }
 

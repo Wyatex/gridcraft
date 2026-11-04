@@ -13,7 +13,8 @@ pub(super) fn filter_menu(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, was_
     let _ = geo;
     // Tables get an autofilter on demand.
     let table_range = filter_table_range(sh, col, row);
-    if sh.autofilter.is_none()
+    if !app.read_only
+        && sh.autofilter.is_none()
         && let Some(r) = table_range
     {
         let _ = app.session.run("data.filter", json!({"range": r.a1()}));

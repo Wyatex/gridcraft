@@ -104,6 +104,11 @@ pub fn start() {
                     let session = Session::new();
                     let mut app = SheetApp::new(session, services);
 
+                    // Preview is a viewer by default. Keep the policy at the engine boundary so
+                    // commands from the toolbar, keyboard, clipboard and embedding API all share
+                    // the same read-only behavior.
+                    app.set_read_only(true);
+
                     // Configure for preview mode
                     preview_ui::configure_preview_app(&mut app);
 
@@ -179,6 +184,10 @@ impl PreviewShell {
             }
             "preview.showXlsImportNotice" => {
                 self.app.show_xls_import_notice = params.get("show").and_then(serde_json::Value::as_bool).unwrap_or(false);
+            }
+            "preview.setEditable" => {
+                let editable = params.get("editable").and_then(serde_json::Value::as_bool).unwrap_or(false);
+                self.app.set_read_only(!editable);
             }
             _ => {
                 self.app.run(id, params)?;

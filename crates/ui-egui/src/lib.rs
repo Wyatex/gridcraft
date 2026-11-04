@@ -204,6 +204,8 @@ pub struct Perf {
 
 pub struct SheetApp {
     pub session: Session,
+    /// Prevents cell, object and workbook editing in hosts that embed the sheet as a viewer.
+    pub read_only: bool,
     pub ui: UiState,
     /// The window chrome to draw (see [`Chrome`]).
     pub chrome: Chrome,

@@ -136,6 +136,9 @@ impl SheetApp {
     /// Format Chart pane, the equation editor).
     pub fn open_object(&mut self, o: ObjRef) -> OpenAction {
         self.selected_object = Some(o);
+        if self.read_only {
+            return OpenAction::Select;
+        }
         let action = self.session.active().and_then(|d| d.wb.active()).map_or(OpenAction::Select, |sh| open_action(sh, o));
         match action {
             OpenAction::EditText(id) => {

@@ -19,6 +19,22 @@ fn v(s: &Session, a: &str) -> Value {
 }
 
 #[test]
+fn read_only_session_rejects_edits_but_keeps_navigation_and_zoom() {
+    let mut s = s();
+    s.execute("cell.set", json!({"cell": "A1", "input": "kept"})).unwrap();
+    s.set_read_only(true);
+
+    assert!(s.execute("cell.set", json!({"cell": "A1", "input": "changed"})).is_err());
+    assert!(s.execute("home.formatCells", json!({"range": "A1", "style": {"font": {"bold": true}}})).is_err());
+    assert_eq!(v(&s, "A1"), Value::text("kept"));
+
+    s.execute("selection.set", json!({"cell": "B2"})).unwrap();
+    s.execute("view.zoom", json!({"percent": 125})).unwrap();
+    assert_eq!(s.doc().unwrap().selection.active, CellRef::parse("B2").unwrap());
+    assert_eq!(s.doc().unwrap().wb.active().unwrap().zoom, 125);
+}
+
+#[test]
 fn entering_empty_cells_preserves_whole_sheet_formatting() {
     let mut s = s();
     s.execute("cell.set", json!({"cell": "A1", "input": "existing"})).unwrap();

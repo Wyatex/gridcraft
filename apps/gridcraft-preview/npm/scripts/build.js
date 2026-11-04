@@ -73,11 +73,10 @@ try {
 console.log('\nCopying files to npm/dist/...');
 
 // Create dist directory
-if (!fs.existsSync(DIST_DIR)) {
-  fs.mkdirSync(DIST_DIR, { recursive: true });
-}
+fs.rmSync(DIST_DIR, { recursive: true, force: true });
+fs.mkdirSync(DIST_DIR, { recursive: true });
 
-// Copy WASM and JS files
+// Copy WASM, JS, and wasm-bindgen snippet files
 const files = fs.readdirSync(BUILD_OUTPUT);
 const wasmFiles = files.filter(f => f.endsWith('.wasm') || f.endsWith('.js'));
 
@@ -86,6 +85,31 @@ for (const file of wasmFiles) {
   const dest = path.join(DIST_DIR, file);
   fs.copyFileSync(src, dest);
   console.log(`  Copied: ${file}`);
+}
+
+const wasmFile = wasmFiles.find(f => f.endsWith('.wasm'));
+if (wasmFile && wasmFile !== 'gridcraft-preview_bg.wasm') {
+  fs.copyFileSync(path.join(DIST_DIR, wasmFile), path.join(DIST_DIR, 'gridcraft-preview_bg.wasm'));
+  console.log('  Created: gridcraft-preview_bg.wasm');
+}
+
+function copyDirectory(source, destination) {
+  fs.mkdirSync(destination, { recursive: true });
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    const sourcePath = path.join(source, entry.name);
+    const destinationPath = path.join(destination, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectory(sourcePath, destinationPath);
+    } else {
+      fs.copyFileSync(sourcePath, destinationPath);
+    }
+  }
+}
+
+const snippetsDir = path.join(BUILD_OUTPUT, 'snippets');
+if (fs.existsSync(snippetsDir)) {
+  copyDirectory(snippetsDir, path.join(DIST_DIR, 'snippets'));
+  console.log('  Copied: snippets/');
 }
 
 // Create main entry point that re-exports from the generated JS
@@ -120,7 +144,6 @@ for (const license of ['LICENSE-MIT', 'LICENSE-APACHE']) {
 }
 
 // Get WASM file size
-const wasmFile = wasmFiles.find(f => f.endsWith('.wasm'));
 if (wasmFile) {
   const stats = fs.statSync(path.join(DIST_DIR, wasmFile));
   const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);

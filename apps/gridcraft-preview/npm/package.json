@@ -1,6 +1,6 @@
 {
   "name": "gridcraft-preview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only XLSX/XLS spreadsheet viewer for the web, powered by GridCraft",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

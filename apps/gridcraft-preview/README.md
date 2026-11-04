@@ -78,7 +78,7 @@ apps/gridcraft-preview/
 ├── src/
 │   ├── main.rs               # Entry point
 │   ├── web.rs                # Browser shell and eframe setup
-│   ├── preview_session.rs    # Command filtering for read-only mode
+│   ├── preview_session.rs    # Read-only Session wrapper for embedders
 │   ├── preview_ui.rs         # UI configuration
 │   └── preview_api.rs        # JavaScript API (wasm-bindgen)
 ├── npm/
@@ -101,10 +101,10 @@ apps/gridcraft-preview/
 
 The preview mode is enforced at multiple levels:
 
-1. **Command Filtering** (`preview_session.rs`)
-   - Wraps `Session` and filters all `execute()` calls
-   - Only allows whitelisted read-only commands
-   - Returns errors for editing commands
+1. **Engine read-only policy** (`Session::set_read_only`)
+   - The preview shell enables the policy before it accepts files or commands
+   - An allowlist keeps navigation, view, inspection and copy commands available
+   - Editing commands are blocked at the engine boundary, including API and keyboard paths
 
 2. **UI Configuration** (`preview_ui.rs`)
    - Hides File tab and edit ribbons
@@ -117,27 +117,6 @@ The preview mode is enforced at multiple levels:
    - No download capability
    - Read-only clipboard (copy only)
 
-### Allowed Commands
-
-```rust
-// View operations
-"view.zoom", "view.zoomIn", "view.zoomOut", "view.fitWindow"
-
-// Selection (read-only)
-"selection.set", "selection.move", "selection.extend"
-
-// Sheet navigation
-"sheet.activate", "sheet.next", "sheet.previous"
-
-// Search
-"search.find", "search.findNext", "search.findPrevious"
-
-// Copy
-"home.copy", "edit.copy"
-
-// UI
-"ui.setLanguage", "ui.setTheme"
-```
 
 ## Building
 

@@ -85,6 +85,18 @@ impl GridCraftPreview {
         send_command("view.zoom", json!({"percent": percentage.clamp(10.0, 400.0)}))
     }
 
+    /// Switch between the default read-only viewer and editable workbook mode.
+    #[wasm_bindgen(js_name = setEditable)]
+    pub fn set_editable(&mut self, editable: bool) -> Result<(), JsValue> {
+        send_command("preview.setEditable", json!({"editable": editable}))
+    }
+
+    /// Configure whether the workbook is read-only.
+    #[wasm_bindgen(js_name = setReadOnly)]
+    pub fn set_read_only(&mut self, read_only: bool) -> Result<(), JsValue> {
+        self.set_editable(!read_only)
+    }
+
     /// Get list of sheet names.
     #[wasm_bindgen(js_name = getSheetNames)]
     pub fn get_sheet_names(&self) -> Result<Vec<JsValue>, JsValue> {
