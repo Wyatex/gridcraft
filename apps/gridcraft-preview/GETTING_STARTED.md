@@ -28,7 +28,7 @@ git checkout feature/gridcraft-preview
 cd apps/gridcraft-preview
 
 # 启动开发服务器
-trunk serve --release
+trunk serve
 ```
 
 打开浏览器访问 http://127.0.0.1:8772
