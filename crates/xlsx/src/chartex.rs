@@ -2,23 +2,38 @@
 //! which files keep as `cx:chartSpace` "chartex" parts (`xl/charts/chartExN.xml`) rather than
 //! DrawingML chart parts.
 
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
+#[cfg(feature = "write")]
 use gridcraft_core::RangeRef;
+#[cfg(feature = "write")]
 use gridcraft_formula::{Expr, SheetSel};
-use gridcraft_model::{Chart, ChartKind, LegendPos, QuartileMethod, Series, Workbook};
+#[cfg(feature = "write")]
+use gridcraft_model::Workbook;
+use gridcraft_model::{Chart, ChartKind, LegendPos, QuartileMethod, Series};
 
+#[cfg(feature = "write")]
 use crate::drawing::srgb;
-use crate::xml::{El, esc, esc_attr};
+use crate::xml::El;
+#[cfg(feature = "write")]
+use crate::xml::{esc, esc_attr};
 
+#[cfg(feature = "write")]
 pub const CT_CHARTEX: &str = "application/vnd.ms-office.chartex+xml";
+#[cfg(feature = "write")]
 pub const REL_CHARTEX: &str = "http://schemas.microsoft.com/office/2014/relationships/chartEx";
+#[cfg(feature = "write")]
 pub const CT_STYLE: &str = "application/vnd.ms-office.chartstyle+xml";
+#[cfg(feature = "write")]
 pub const CT_COLORS: &str = "application/vnd.ms-office.chartcolorstyle+xml";
+#[cfg(feature = "write")]
 pub const REL_STYLE: &str = "http://schemas.microsoft.com/office/2011/relationships/chartStyle";
+#[cfg(feature = "write")]
 pub const REL_COLORS: &str = "http://schemas.microsoft.com/office/2011/relationships/chartColorStyle";
 
 /// Kinds written as chartex parts.
+#[cfg(feature = "write")]
 pub fn is_chartex(k: ChartKind) -> bool {
     use craft_drawingml::chart::ChartType;
     match k {
@@ -34,6 +49,7 @@ pub fn is_chartex(k: ChartKind) -> bool {
 
 /// The `mc:Choice` requirement for a kind's drawing frame: (prefix, namespace). Funnel charts
 /// came in a later revision of the format.
+#[cfg(feature = "write")]
 pub fn requires(k: ChartKind) -> (&'static str, &'static str) {
     match k {
         ChartKind::Funnel => ("cx2", "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex"),
@@ -180,6 +196,10 @@ pub fn read_chartex(root: &El) -> Option<Chart> {
 }
 
 // ---------------------------------------------------------------- writing
+
+#[cfg(feature = "write")]
+mod write_imp {
+    use super::*;
 
 /// Prefix of the hidden defined names chartex formulas go through: a chartex part refers to
 /// its data by names (`_xlchart.v1.0`), which the workbook defines, not by references.
@@ -412,6 +432,10 @@ pub fn write_chartex(wb: &Workbook, si: usize, ch: &Chart, names: &mut Vec<Strin
     );
     s
 }
+}
+
+#[cfg(feature = "write")]
+pub use write_imp::{NAME_PREFIX, colors_xml, style_xml, write_chartex};
 
 #[cfg(test)]
 mod quartile_tests {

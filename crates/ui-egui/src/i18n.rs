@@ -9,24 +9,43 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "all-languages")]
 mod cs;
+#[cfg(feature = "all-languages")]
 mod de;
+#[cfg(feature = "all-languages")]
 mod el;
+#[cfg(feature = "all-languages")]
 mod es;
+#[cfg(feature = "all-languages")]
 mod es_functions;
+#[cfg(feature = "all-languages")]
 mod fr;
+#[cfg(feature = "all-languages")]
 mod it;
+#[cfg(feature = "all-languages")]
 mod ja;
+#[cfg(feature = "all-languages")]
 mod ko;
+#[cfg(feature = "all-languages")]
 mod nl;
+#[cfg(feature = "all-languages")]
 mod pl;
+#[cfg(feature = "all-languages")]
 mod pt;
+#[cfg(feature = "all-languages")]
 mod pt_functions;
+#[cfg(feature = "all-languages")]
 mod ro;
+#[cfg(feature = "all-languages")]
 mod ru;
+#[cfg(feature = "all-languages")]
 mod sr;
+#[cfg(feature = "all-languages")]
 mod tr;
+#[cfg(feature = "all-languages")]
 mod uk;
+#[cfg(feature = "all-languages")]
 mod vi;
 mod zh;
 
@@ -209,24 +228,43 @@ impl Language {
     fn translated(self, text: &str) -> Option<&'static str> {
         match self {
             Self::En => None,
-            Self::Es => es::translate(text),
-            Self::El => el::translate(text),
-            Self::Ja => ja::translate(text),
             Self::Zh => zh::translate(text),
+            #[cfg(feature = "all-languages")]
+            Self::Es => es::translate(text),
+            #[cfg(feature = "all-languages")]
+            Self::El => el::translate(text),
+            #[cfg(feature = "all-languages")]
+            Self::Ja => ja::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Ko => ko::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Ru => ru::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::PtBr => pt::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::De => de::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Cs => cs::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Fr => fr::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Sr => sr::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Tr => tr::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Pl => pl::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::It => it::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Uk => uk::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Vi => vi::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Nl => nl::translate(text),
+            #[cfg(feature = "all-languages")]
             Self::Ro => ro::translate(text),
+            #[cfg(not(feature = "all-languages"))]
+            _ => None,
         }
     }
 
@@ -258,10 +296,16 @@ impl Language {
 
     /// The function help tables (descriptions, argument names) of the languages that have them.
     fn function_help(self) -> Option<(HelpTable, HelpTable)> {
+        #[cfg(feature = "all-languages")]
         match self {
             Self::Es => Some((es_functions::DESCRIPTIONS, es_functions::ARGUMENTS)),
             Self::PtBr => Some((pt_functions::DESCRIPTIONS, pt_functions::ARGUMENTS)),
             _ => None,
+        }
+        #[cfg(not(feature = "all-languages"))]
+        {
+            let _ = self;
+            None
         }
     }
 }
@@ -778,5 +822,14 @@ mod tests {
         let keys: Vec<String> = order[1..].iter().map(|l| name_sort_key(l.name())).collect();
         assert!(keys.windows(2).all(|w| w[0] <= w[1]), "{keys:?}");
         assert_eq!(name_sort_key("Čeština"), "cestina");
+    }
+
+    #[test]
+    fn zh_translates_read_only_and_sheet_filter_strings() {
+        let cleaned = crate::clean_error("command `range.move` is not available right now: the workbook is read-only");
+        assert_eq!(cleaned, "the workbook is read-only");
+        assert_eq!(Language::Zh.tr_error("command `range.move` is not available right now: the workbook is read-only"), "当前工作簿为只读模式");
+        assert_eq!(Language::Zh.tr("Type to filter…"), "输入以筛选…");
+        assert_eq!(Language::Zh.tr("OK"), "确定");
     }
 }

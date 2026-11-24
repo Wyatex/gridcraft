@@ -1,16 +1,21 @@
 //! View tab (sheet view state that's saved with the file) and Page Layout settings.
 
+#[cfg(feature = "editing")]
 use gridcraft_core::RangeRef;
+#[cfg(feature = "editing")]
 use gridcraft_model::Orientation;
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, EngineError, Result, Session, always, bad, bool_param, cell_param, cell_param_on, cmd, edit, f64_param, has_doc, str_param,
     target_range, target_sheet, u32_param,
 };
+#[cfg(not(feature = "editing"))]
+use super::{CommandSpec, EngineError, Result, Session, always, bad, bool_param, cell_param_on, cmd, edit, f64_param, has_doc, target_sheet};
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
+    let v = vec![
         cmd!(
             "view.freezePanes",
             "Freeze Panes",
@@ -40,6 +45,32 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!("view.showZeros", "Show Zeros", [], None, "{on?}", has_doc, |s, p| sheet_flag(s, p, "zeros")),
         cmd!("view.showOutlineSymbols", "Show Outline Symbols", [], Some("Ctrl+8"), "{on?}", has_doc, |s, p| sheet_flag(s, p, "outlineSymbols")),
         cmd!("view.showObjects", "Show Objects", [], Some("Ctrl+6"), "{on?}", has_doc, show_objects),
+        cmd!("view.rightToLeft", "Sheet Right-to-Left", ["Page Layout", "Sheet Options"], None, "{on?}", has_doc, |s, p| sheet_flag(s, p, "rtl")),
+        cmd!("view.zoom", "Zoom", ["View", "Zoom"], None, "{percent: 10..400}", has_doc, zoom),
+        cmd!("view.zoom100", "100%", ["View", "Zoom"], None, "{}", has_doc, |s, _| zoom(s, &json!({"percent": 100}))),
+        cmd!(query "view.formulaBar", "Formula Bar", ["View", "Show"], None, "{on?: bool}", always, |s, p| {
+            s.prefs.formula_bar = bool_param(p, "on").unwrap_or(!s.prefs.formula_bar);
+            Ok(json!({"on": s.prefs.formula_bar}))
+        }),
+        cmd!(
+            query "view.statusBar",
+            "Customize Status Bar",
+            [],
+            None,
+            "{average?, count?, numericalCount?, minimum?, maximum?, sum?: bool (the statistics shown for a selection; returns all six)}",
+            always,
+            status_bar
+        ),
+        cmd!("view.zoomToSelection", "Zoom to Selection", ["View", "Zoom"], None, "{viewWidth?, viewHeight?}", has_doc, zoom_selection),
+    ];
+    #[cfg(not(feature = "editing"))]
+    {
+        v
+    }
+    #[cfg(feature = "editing")]
+    {
+        let mut v = v;
+        v.extend([
         cmd!(
             "view.showSheetTabs",
             "Show Sheet Tabs",
@@ -61,23 +92,6 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!("view.showVerticalScrollBar", "Show Vertical Scroll Bar", [], None, "{on?} (this workbook; toggles without `on`)", has_doc, |s, p| {
             workbook_view_flag(s, p, "vertical")
         }),
-        cmd!("view.rightToLeft", "Sheet Right-to-Left", ["Page Layout", "Sheet Options"], None, "{on?}", has_doc, |s, p| sheet_flag(s, p, "rtl")),
-        cmd!("view.zoom", "Zoom", ["View", "Zoom"], None, "{percent: 10..400}", has_doc, zoom),
-        cmd!("view.zoom100", "100%", ["View", "Zoom"], None, "{}", has_doc, |s, _| zoom(s, &json!({"percent": 100}))),
-        cmd!(query "view.formulaBar", "Formula Bar", ["View", "Show"], None, "{on?: bool}", always, |s, p| {
-            s.prefs.formula_bar = bool_param(p, "on").unwrap_or(!s.prefs.formula_bar);
-            Ok(json!({"on": s.prefs.formula_bar}))
-        }),
-        cmd!(
-            query "view.statusBar",
-            "Customize Status Bar",
-            [],
-            None,
-            "{average?, count?, numericalCount?, minimum?, maximum?, sum?: bool (the statistics shown for a selection; returns all six)}",
-            always,
-            status_bar
-        ),
-        cmd!("view.zoomToSelection", "Zoom to Selection", ["View", "Zoom"], None, "{viewWidth?, viewHeight?}", has_doc, zoom_selection),
         cmd!("pageLayout.orientation", "Orientation", ["Page Layout", "Page Setup"], None, "{orientation: portrait|landscape}", has_doc, orientation),
         cmd!(
             "pageLayout.size",
@@ -161,7 +175,9 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             theme
         ),
-    ]
+        ]);
+        v
+    }
 }
 
 fn freeze_panes(s: &mut Session, p: &Json) -> Result<Json> {
@@ -212,6 +228,7 @@ fn sheet_flag(s: &mut Session, p: &Json, which: &str) -> Result<Json> {
 
 /// File › Options › Advanced › Display options for this workbook: the sheet tabs and the two
 /// scroll bars, saved with the workbook (`<workbookView showSheetTabs … />`).
+#[cfg(feature = "editing")]
 fn workbook_view_flag(s: &mut Session, p: &Json, which: &str) -> Result<Json> {
     edit(s, |cx| {
         let view = &mut cx.wb.view;
@@ -286,6 +303,7 @@ fn zoom_selection(s: &mut Session, p: &Json) -> Result<Json> {
     zoom(s, &json!({"percent": z}))
 }
 
+#[cfg(feature = "editing")]
 fn orientation(s: &mut Session, p: &Json) -> Result<Json> {
     let o = if str_param(p, "orientation") == Some("landscape") { Orientation::Landscape } else { Orientation::Portrait };
     edit(s, |cx| {
@@ -295,6 +313,7 @@ fn orientation(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn paper(s: &mut Session, p: &Json) -> Result<Json> {
     let paper = str_param(p, "paper").unwrap_or("Letter").to_string();
     edit(s, |cx| {
@@ -304,6 +323,7 @@ fn paper(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn margins(s: &mut Session, p: &Json) -> Result<Json> {
     let preset = match str_param(p, "preset") {
         Some("wide") => Some([1.0, 1.0, 1.0, 1.0, 0.5, 0.5]),
@@ -328,6 +348,7 @@ fn margins(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn print_area(s: &mut Session, p: &Json) -> Result<Json> {
     let clear = bool_param(p, "clear").unwrap_or(false);
     let r = target_range(s, p)?;
@@ -338,6 +359,7 @@ fn print_area(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn print_titles(s: &mut Session, p: &Json) -> Result<Json> {
     // An absent key leaves that axis alone, and an empty or null value clears it — the same
     // reading `pageLayout.pageSetup` gives `titleRows`/`titleCols`. Assigning `None` for a
@@ -368,6 +390,7 @@ fn print_titles(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn scale_fit(s: &mut Session, p: &Json) -> Result<Json> {
     edit(s, |cx| {
         let si = cx.sheet_index();
@@ -383,6 +406,7 @@ fn scale_fit(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn breaks(s: &mut Session, p: &Json) -> Result<Json> {
     let at = cell_param(s, p, "cell")?.unwrap_or(s.doc()?.selection.active);
     let insert = bool_param(p, "insert").unwrap_or(false);
@@ -412,8 +436,10 @@ fn breaks(s: &mut Session, p: &Json) -> Result<Json> {
 }
 
 /// Excel keeps at most 255 characters per header or footer.
+#[cfg(feature = "editing")]
 const MAX_HEADER_FOOTER: usize = 255;
 
+#[cfg(feature = "editing")]
 fn header_footer(s: &mut Session, p: &Json) -> Result<Json> {
     const CMD: &str = "pageLayout.headerFooter";
     let si = target_sheet(s, p)?;
@@ -494,6 +520,7 @@ fn header_footer(s: &mut Session, p: &Json) -> Result<Json> {
 }
 
 /// GridCraft's own theme set (original palettes).
+#[cfg(feature = "editing")]
 pub fn themes() -> Vec<(&'static str, [u32; 12])> {
     vec![
         ("Craft", [0xFFFFFF, 0x000000, 0xE8E8E8, 0x0E2841, 0x156082, 0xE97132, 0x196B24, 0x0F9ED5, 0xA02B93, 0x4EA72E, 0x467886, 0x96607D]),
@@ -506,6 +533,7 @@ pub fn themes() -> Vec<(&'static str, [u32; 12])> {
     ]
 }
 
+#[cfg(feature = "editing")]
 fn theme(s: &mut Session, p: &Json) -> Result<Json> {
     let name = str_param(p, "name").unwrap_or("Craft").to_string();
     let colors = p

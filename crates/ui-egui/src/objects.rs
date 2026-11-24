@@ -3,6 +3,7 @@
 
 use egui::{CursorIcon, Pos2, Rect, Vec2};
 use gridcraft_engine::model::{ObjKind, ObjRef, ShapeKind, Sheet};
+#[cfg(feature = "full")]
 use serde_json::json;
 
 use crate::SheetApp;
@@ -141,17 +142,25 @@ impl SheetApp {
     /// Format Chart pane, the equation editor).
     pub fn open_object(&mut self, o: ObjRef) -> OpenAction {
         self.selected_object = Some(o);
-        let action = self.session.active().and_then(|d| d.wb.active()).map_or(OpenAction::Select, |sh| open_action(sh, o));
-        match action {
-            OpenAction::EditText(id) => {
-                self.begin_text_box_edit(id);
-            }
-            OpenAction::FormatChart(_) => self.grid.pane = Some("formatChart".into()),
-            OpenAction::EditControl(id) => crate::control_ui::edit(self, id),
-            OpenAction::EditEquation(id) => self.open_dialog("equation", json!({"id": id})),
-            OpenAction::Select => {}
+        if self.read_only {
+            return OpenAction::Select;
         }
-        action
+        #[cfg(not(feature = "full"))]
+        return OpenAction::Select;
+        #[cfg(feature = "full")]
+        {
+            let action = self.session.active().and_then(|d| d.wb.active()).map_or(OpenAction::Select, |sh| open_action(sh, o));
+            match action {
+                OpenAction::EditText(id) => {
+                    self.begin_text_box_edit(id);
+                }
+                OpenAction::FormatChart(_) => self.grid.pane = Some("formatChart".into()),
+                OpenAction::EditControl(id) => crate::control_ui::edit(self, id),
+                OpenAction::EditEquation(id) => self.open_dialog("equation", json!({"id": id})),
+                OpenAction::Select => {}
+            }
+            action
+        }
     }
 
     /// The selected object's id when it is a chart (the Chart Design tab and Format Chart pane).
@@ -167,6 +176,7 @@ impl SheetApp {
 
     /// Deletes the selected object (Delete and Backspace). False when nothing on the active
     /// sheet is selected, so the key clears cells instead.
+    #[cfg(feature = "full")]
     pub fn delete_selected_object(&mut self) -> bool {
         let Some(o) = self.selected_object.take() else { return false };
         if !self.session.active().and_then(|d| d.wb.active()).is_some_and(|sh| sh.has_object(o)) {
@@ -174,6 +184,11 @@ impl SheetApp {
         }
         self.run_or_alert("object.delete", json!({"kind": o.kind.name(), "id": o.id}));
         true
+    }
+
+    #[cfg(not(feature = "full"))]
+    pub fn delete_selected_object(&mut self) -> bool {
+        false
     }
 
     /// Drops the selection when its object is gone from the active sheet (deleted, undone, or

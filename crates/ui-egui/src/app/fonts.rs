@@ -55,7 +55,10 @@ impl SheetApp {
         // A pending synthetic step owns the next real `ui` pass: `ui` returns at the font gate
         // before it handles input, so a font change requested now would consume the step without
         // applying it. Delay the change one frame; the hidden-paint request keeps it coming.
+        #[cfg(feature = "full")]
         let defer_font_change = self.synthetic_pending || !self.synthetic.is_empty();
+        #[cfg(not(feature = "full"))]
+        let defer_font_change = false;
         if !defer_font_change && self.fonts_han.is_some_and(|han| han != theme::HanOrder::of(self.ui.language)) {
             self.fonts_ready = false;
             self.fonts_set = false;

@@ -1,11 +1,17 @@
 //! Draw tab: pen and eraser tools, ink strokes, Ink to Shape.
 
+use gridcraft_model::{Color, Shape};
+#[cfg(feature = "editing")]
 use gridcraft_core::CellRef;
-use gridcraft_model::{Anchor, Color, Shape, ShapeKind};
+#[cfg(feature = "editing")]
+use gridcraft_model::{Anchor, ShapeKind};
+#[cfg(feature = "editing")]
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{CommandSpec, EngineError, Result, Session, bad, bool_param, cmd, edit, f64_param, has_doc, ok, str_param, u32_param};
 
+#[cfg(feature = "editing")]
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(noundo "draw.pen", "Pen", ["Draw", "Tools"], None, "{on?: bool, color?: hex, width?: 2}", has_doc, pen),
@@ -27,6 +33,7 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
+#[cfg(feature = "editing")]
 fn pen(s: &mut Session, p: &Json) -> Result<Json> {
     let on = bool_param(p, "on").unwrap_or(s.draw_tool != "pen");
     s.draw_tool = if on { "pen".into() } else { String::new() };
@@ -39,6 +46,7 @@ fn pen(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"tool": s.draw_tool, "color": s.draw_color, "width": s.draw_width}))
 }
 
+#[cfg(feature = "editing")]
 fn eraser(s: &mut Session, p: &Json) -> Result<Json> {
     let on = bool_param(p, "on").unwrap_or(s.draw_tool != "eraser");
     s.draw_tool = if on { "eraser".into() } else { String::new() };
@@ -49,6 +57,7 @@ fn parse_points(t: &str) -> Vec<[f32; 2]> {
     t.split(';').filter_map(|pt| pt.split_once(',').and_then(|(x, y)| Some([x.parse().ok()?, y.parse().ok()?]))).collect()
 }
 
+#[cfg(feature = "editing")]
 fn stroke(s: &mut Session, p: &Json) -> Result<Json> {
     let pts: Vec<[f64; 2]> = p
         .get("points")
@@ -116,6 +125,7 @@ pub fn ink_points(sh: &Shape) -> Vec<[f32; 2]> {
     parse_points(&sh.text)
 }
 
+#[cfg(feature = "editing")]
 fn ink_to_shape(s: &mut Session, p: &Json) -> Result<Json> {
     let si = s.doc()?.wb.active_sheet();
     let id = u32_param(p, "id");

@@ -31,6 +31,7 @@ impl SheetApp {
     /// that came with it is not pasted again over the moved block; GridCraft's own (empty)
     /// clipboard is pasted instead, which reports "Nothing to paste.". Other text means the
     /// clipboard has moved on, so the cut's text is forgotten and pastes normally later.
+    #[cfg(feature = "full")]
     pub fn paste_external(&mut self, text: String) {
         if Self::same_clipboard_text(Some(&text), self.cut_text.as_deref()) {
             if self.session.clipboard.is_none() {
@@ -51,6 +52,7 @@ impl SheetApp {
     /// text there but a picture, the picture is pasted. With neither, no host clipboard (web), or
     /// the text that was there when GridCraft last copied without publishing, GridCraft's own
     /// clipboard is pasted.
+    #[cfg(feature = "full")]
     pub fn paste_from_clipboard(&mut self) {
         match self.system_clipboard_text() {
             Some(text) if self.session.clipboard.is_none() || self.clipboard_text_at_copy.as_ref() != Some(&text) => self.paste_external(text),
@@ -64,6 +66,7 @@ impl SheetApp {
 
     /// Paste a picture from the system clipboard (a screenshot, an image copied in a browser) as
     /// a floating picture whose top-left corner is the active cell, as Excel does.
+    #[cfg(feature = "full")]
     pub fn paste_picture(&mut self, image: image::RgbaImage) {
         match encode_png(&image) {
             Ok(png) => self.run_or_alert("insert.picture", json!({"base64": gridcraft_engine::io::base64_encode(&png), "mime": "image/png"})),
@@ -72,6 +75,7 @@ impl SheetApp {
     }
 
     /// Cmd/Ctrl+V with a picture and no text on the clipboard (egui's `Event::PasteImage`).
+    #[cfg(feature = "full")]
     pub fn paste_color_image(&mut self, image: &egui::ColorImage) {
         let [w, h] = image.size;
         // A side too large for u32 is too large to paste; check before copying the pixels.
@@ -94,6 +98,7 @@ impl SheetApp {
 
     /// Whether two clipboard texts are the same copy: trailing line breaks don't count, as in the
     /// engine's `edit.paste`, and CRLF matches LF (egui's `Event::Paste` text may keep the host's).
+    #[cfg(feature = "full")]
     fn same_clipboard_text(a: Option<&str>, b: Option<&str>) -> bool {
         fn chars(t: &str) -> impl Iterator<Item = char> + '_ {
             t.trim_end_matches(['\r', '\n']).chars().filter(|c| *c != '\r')
@@ -106,10 +111,13 @@ impl SheetApp {
 }
 
 /// Largest clipboard picture pasted, per side and in total (an 8K screenshot fits).
+#[cfg(feature = "full")]
 const MAX_PICTURE_SIDE: u32 = 16_384;
+#[cfg(feature = "full")]
 const MAX_PICTURE_PIXELS: u64 = 64 * 1024 * 1024;
 
 /// Refuse empty clipboard pictures and sizes that would exhaust memory.
+#[cfg(feature = "full")]
 fn check_picture_size(w: u32, h: u32) -> Result<(), String> {
     if w == 0 || h == 0 {
         return Err("The picture on the clipboard is empty.".into());
@@ -121,6 +129,7 @@ fn check_picture_size(w: u32, h: u32) -> Result<(), String> {
 }
 
 /// PNG bytes of a clipboard picture, refusing sizes that would exhaust memory.
+#[cfg(feature = "full")]
 fn encode_png(image: &image::RgbaImage) -> Result<Vec<u8>, String> {
     let (w, h) = image.dimensions();
     check_picture_size(w, h)?;

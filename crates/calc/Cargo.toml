@@ -8,10 +8,14 @@ description = "GridCraft calculation engine: dependency graph, recalculation, ev
 [lints]
 workspace = true
 
+[features]
+default = ["eval"]
+eval = ["dep:gridcraft-functions"]
+
 [dependencies]
 gridcraft-core = { workspace = true }
 gridcraft-formula = { workspace = true }
-gridcraft-functions = { workspace = true }
+gridcraft-functions = { workspace = true, optional = true }
 gridcraft-numfmt = { workspace = true }
-gridcraft-model = { workspace = true }
+gridcraft-model = { path = "../model", default-features = false }
 log = { workspace = true }

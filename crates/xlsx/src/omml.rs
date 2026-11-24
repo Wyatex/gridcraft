@@ -9,6 +9,7 @@ const MAX_DEPTH: usize = 64;
 
 /// The LaTeX for an `m:oMath` (or `m:oMathPara`) element, if every part is in the subset and the
 /// result lays out.
+#[cfg(feature = "latex")]
 pub fn to_latex(e: &El) -> Option<String> {
     if e.name != "oMathPara" && e.name != "oMath" {
         return None;
@@ -22,8 +23,14 @@ pub fn to_latex(e: &El) -> Option<String> {
     (!out.is_empty() && gridcraft_math::check(&out).is_ok()).then_some(out)
 }
 
+#[cfg(not(feature = "latex"))]
+pub fn to_latex(_e: &El) -> Option<String> {
+    None
+}
+
 // The shared reader is tolerant; this importer must fall back instead of losing
 // equation content. Bound escaped XML before serializing or descending further.
+#[cfg(feature = "latex")]
 fn validate_conversion(e: &El, depth: usize, property: bool, remaining: &mut usize) -> Option<()> {
     if depth > MAX_DEPTH {
         return None;
@@ -88,6 +95,7 @@ fn validate_conversion(e: &El, depth: usize, property: bool, remaining: &mut usi
     Some(())
 }
 
+#[cfg(feature = "latex")]
 fn write_el(e: &El, out: &mut String) {
     out.push_str("<m:");
     out.push_str(&e.name);
@@ -118,6 +126,7 @@ fn write_el(e: &El, out: &mut String) {
     out.push('>');
 }
 
+#[cfg(feature = "latex")]
 fn push_xml_escaped(s: &str, out: &mut String) {
     for ch in s.chars() {
         match ch {

@@ -1,31 +1,47 @@
 //! The command registry. Ids follow Excel's ribbon (`home.bold`, `insert.chart`,
 //! `data.sortAscending`) plus primitive editing commands (`cell.set`, `selection.set`).
 
+#[cfg(feature = "editing")]
 pub mod analysis;
+#[cfg(feature = "editing")]
 pub mod controls;
+#[cfg(feature = "editing")]
 pub mod data;
 pub mod draw;
 pub mod edit;
+#[cfg(feature = "editing")]
 pub mod equation;
 pub mod extra;
 pub mod file;
+#[cfg(feature = "editing")]
 pub mod forecast;
 pub mod format;
 pub mod formulas;
+#[cfg(feature = "editing")]
 pub mod insert;
 pub mod inspect;
+#[cfg(feature = "editing")]
 pub mod macros;
+#[cfg(feature = "editing")]
 pub mod pivot;
+#[cfg(feature = "editing")]
 pub mod print;
+#[cfg(feature = "editing")]
 pub mod python;
+#[cfg(feature = "editing")]
 pub mod review;
 pub mod sheet;
 pub mod slicer;
+#[cfg(feature = "editing")]
 pub mod solver;
+#[cfg(feature = "editing")]
 pub mod spelling;
+#[cfg(feature = "editing")]
 pub mod stash;
 pub mod view;
+#[cfg(feature = "editing")]
 pub mod whatif;
+#[cfg(feature = "editing")]
 pub mod wordart;
 
 use gridcraft_calc::Key;
@@ -164,29 +180,36 @@ pub fn command_specs() -> &'static [CommandSpec] {
         let mut v = Vec::new();
         v.extend(file::specs());
         v.extend(edit::specs());
+        #[cfg(feature = "editing")]
         v.extend(format::specs());
         v.extend(sheet::specs());
-        v.extend(insert::specs());
-        v.extend(controls::specs());
-        v.extend(equation::specs());
-        v.extend(data::specs());
-        v.extend(formulas::specs());
-        v.extend(review::specs());
+        #[cfg(feature = "editing")]
+        {
+            v.extend(insert::specs());
+            v.extend(controls::specs());
+            v.extend(equation::specs());
+            v.extend(data::specs());
+            v.extend(formulas::specs());
+            v.extend(review::specs());
+        }
         v.extend(view::specs());
         v.extend(inspect::specs());
         v.extend(extra::specs());
-        v.extend(macros::specs());
-        v.extend(draw::specs());
-        v.extend(wordart::specs());
-        v.extend(spelling::specs());
-        v.extend(solver::specs());
-        v.extend(pivot::specs());
-        v.extend(python::specs());
-        v.extend(slicer::specs());
-        v.extend(whatif::specs());
-        v.extend(forecast::specs());
-        v.extend(analysis::specs());
-        v.extend(print::specs());
+        #[cfg(feature = "editing")]
+        {
+            v.extend(macros::specs());
+            v.extend(draw::specs());
+            v.extend(wordart::specs());
+            v.extend(spelling::specs());
+            v.extend(solver::specs());
+            v.extend(pivot::specs());
+            v.extend(python::specs());
+            v.extend(slicer::specs());
+            v.extend(whatif::specs());
+            v.extend(forecast::specs());
+            v.extend(analysis::specs());
+            v.extend(print::specs());
+        }
         v
     })
 }
@@ -262,16 +285,19 @@ pub(crate) fn f64_param(p: &Json, key: &str) -> Option<f64> {
 pub(crate) fn bool_param(p: &Json, key: &str) -> Option<bool> {
     p.get(key).and_then(Json::as_bool)
 }
+#[cfg(feature = "editing")]
 pub(crate) fn u32_param(p: &Json, key: &str) -> Option<u32> {
     p.get(key).and_then(Json::as_u64).map(|v| v.min(u32::MAX as u64) as u32)
 }
 
 /// An object anchor mode from Excel's wording or the model's: `"moveAndSize"`/`"twoCell"`,
 /// `"moveOnly"`/`"oneCell"`, `"absolute"`/`"don't move or size"` (case-insensitive).
+#[cfg(feature = "editing")]
 pub(crate) fn anchor_mode_param(p: &Json) -> Option<gridcraft_model::AnchorMode> {
     parse_anchor_mode(str_param(p, "mode").or_else(|| str_param(p, "anchorMode"))?)
 }
 
+#[cfg(feature = "editing")]
 pub(crate) fn parse_anchor_mode(s: &str) -> Option<gridcraft_model::AnchorMode> {
     match s.to_ascii_lowercase().replace([' ', '-', '_', '\''], "").as_str() {
         "moveandsize" | "moveandsizeandcells" | "twocell" => Some(gridcraft_model::AnchorMode::MoveAndSize),
@@ -282,6 +308,7 @@ pub(crate) fn parse_anchor_mode(s: &str) -> Option<gridcraft_model::AnchorMode> 
 }
 
 /// The wire name of an anchor mode (matches the `mode` param of [`anchor_mode_param`]).
+#[cfg(feature = "editing")]
 pub(crate) fn anchor_mode_name(m: gridcraft_model::AnchorMode) -> &'static str {
     match m {
         gridcraft_model::AnchorMode::MoveAndSize => "moveAndSize",
@@ -308,6 +335,7 @@ pub(crate) fn target_ranges(s: &Session, p: &Json) -> Result<Vec<RangeRef>> {
 }
 
 /// A `rows`/`cols` parameter: `3:5` and `B:C`, or a single `3` or `B`.
+#[cfg(feature = "editing")]
 pub(crate) fn parse_lines(t: &str) -> Option<RangeRef> {
     RangeRef::parse(t).or_else(|| if t.contains(':') { None } else { RangeRef::parse(&format!("{t}:{t}")) })
 }
@@ -387,6 +415,7 @@ pub(crate) fn edit<R>(s: &mut Session, f: impl FnOnce(&mut Ctx) -> Result<R>) ->
     let d = s.doc_mut()?;
     commit(d, |cx| {
         let r = f(cx)?;
+        #[cfg(feature = "editing")]
         crate::tables::sync_headers(cx);
         Ok(r)
     })
@@ -447,6 +476,7 @@ pub(crate) fn commit<R>(d: &mut DocState, f: impl FnOnce(&mut Ctx) -> Result<R>)
     } else if !changed.is_empty() {
         d.calc.cells_changed(&mut wb, &changed);
     }
+    #[cfg(feature = "editing")]
     controls::sync_linked_values(&mut wb);
     if let Some(t0) = t0 {
         eprintln!("commit: + recalc {:?}", since(t0));
@@ -544,6 +574,7 @@ fn line_styles_differ(
 /// Turning "Set precision as displayed" on rounds every number constant in the workbook to its
 /// format, permanently (Excel warns "Data will permanently lose accuracy"). Formulas are rounded
 /// by the recalculation that follows.
+#[cfg(feature = "editing")]
 pub(crate) fn round_all_constants_as_displayed(wb: &mut Workbook) {
     let mut prec = gridcraft_calc::DisplayedPrecision::new();
     for si in 0..wb.sheets.len() {
@@ -625,6 +656,7 @@ fn check_protection(old: &Workbook, new: &Workbook, unlocked: &[(String, String)
 ///
 /// Cell edits are guarded separately, by whether the cell is locked (`locked_cell_error`): these
 /// permissions are the ones that are not about one cell's contents.
+#[cfg(feature = "editing")]
 pub(crate) fn refuse_unless_allowed(s: &Session, sheet: usize, what: &str, pick: fn(&gridcraft_model::SheetProtection) -> bool) -> Result<()> {
     if s.doc()?.wb.sheet(sheet).is_some_and(|sh| sh.protection.as_ref().is_some_and(|pr| !pick(pr))) {
         return Err(EngineError::Other(format!("{what} isn't allowed on this protected sheet (Review › Unprotect Sheet).")));

@@ -2,6 +2,7 @@
 //! `vm` and metadata type IDs are one-based; every subsequent table index is zero-based.
 
 use std::collections::HashMap;
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -10,10 +11,15 @@ use gridcraft_model::CellPicture;
 use crate::IoError;
 use crate::package::{Rel, normalize};
 use crate::read::Ctx;
+#[cfg(feature = "write")]
 use crate::write::{NS_MAIN, NS_REL, Out, Rels, XML_DECL};
-use crate::xml::{self, El, esc};
+#[cfg(feature = "write")]
+use crate::xml::esc;
+use crate::xml::{self, El};
 
+#[cfg(feature = "write")]
 const NS_RICH: &str = "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata";
+#[cfg(feature = "write")]
 const NS_IMAGE_REL: &str = "http://schemas.microsoft.com/office/spreadsheetml/2022/richvaluerel";
 const RICH_EXT: &str = "{3E2802C4-A4D2-4D8B-9148-E3BE6C30E623}";
 const MAX_IMAGE: u64 = 16 * 1024 * 1024;
@@ -277,12 +283,14 @@ fn read_value(
 }
 
 /// One rich value per shared model payload; copied cells can reuse a metadata block.
+#[cfg(feature = "write")]
 #[derive(Default)]
 pub struct PicturesOut {
     pictures: Vec<Arc<CellPicture>>,
     indices: HashMap<*const CellPicture, u32>,
 }
 
+#[cfg(feature = "write")]
 impl PicturesOut {
     pub fn is_empty(&self) -> bool {
         self.pictures.is_empty()
@@ -299,6 +307,7 @@ impl PicturesOut {
     }
 }
 
+#[cfg(feature = "write")]
 pub fn write(out: &mut Out, workbook_rels: &mut Rels) -> Result<(), IoError> {
     let pictures = std::mem::take(&mut out.cell_pictures).pictures;
     if pictures.len() > MAX_RECORDS {
@@ -361,6 +370,7 @@ pub fn write(out: &mut Out, workbook_rels: &mut Rels) -> Result<(), IoError> {
     Ok(())
 }
 
+#[cfg(feature = "write")]
 fn metadata(count: usize, dynamic: bool) -> String {
     let type_id = if dynamic { 2 } else { 1 };
     let mut xml = format!(

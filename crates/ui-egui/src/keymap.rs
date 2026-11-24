@@ -347,6 +347,7 @@ pub(crate) fn dispatch(app: &mut SheetApp, ctx: &egui::Context, key: Key, physic
             app.grid.ensure_visible = true;
         }
         Shortcut::Dialog(name, params) => app.open_dialog(name, params),
+        #[cfg(feature = "full")]
         Shortcut::Date | Shortcut::Time => {
             let text = app
                 .session
@@ -359,6 +360,7 @@ pub(crate) fn dispatch(app: &mut SheetApp, ctx: &egui::Context, key: Key, physic
                 .unwrap_or_default();
             edit_with(app, text);
         }
+        #[cfg(feature = "full")]
         Shortcut::FormulaAbove | Shortcut::ValueAbove => {
             let Some(above) = active.row.checked_sub(1).map(|r| CellRef::new(r, active.col)) else { return true };
             let text = if shortcut == Shortcut::FormulaAbove {
@@ -387,9 +389,12 @@ pub(crate) fn dispatch(app: &mut SheetApp, ctx: &egui::Context, key: Key, physic
             app.grid.reveal_moving_end = m.shift;
             app.grid.reveal_from = from;
         }
+        #[cfg(feature = "full")]
         Shortcut::Edit => app.begin_edit(None, false),
+        #[cfg(feature = "full")]
         Shortcut::PythonMode => app.toggle_python_mode(),
         Shortcut::ContextMenu => app.grid.context_menu = Some(geo.cell_rect(sh, active).center()),
+        #[cfg(feature = "full")]
         Shortcut::DropDown => {
             if sh.validations.iter().any(|d| d.in_cell_dropdown && d.ranges.iter().any(|r| r.contains(active))) {
                 app.grid.list_picker = Some(active);
@@ -398,6 +403,8 @@ pub(crate) fn dispatch(app: &mut SheetApp, ctx: &egui::Context, key: Key, physic
                 app.grid.filter_menu = Some((active.col, active.row, at));
             }
         }
+        #[cfg(not(feature = "full"))]
+        Shortcut::Date | Shortcut::Time | Shortcut::FormulaAbove | Shortcut::ValueAbove | Shortcut::Edit | Shortcut::PythonMode | Shortcut::DropDown => {}
         Shortcut::Zoom(step) => {
             let percent = (i32::from(sh.zoom).saturating_add(step)).clamp(10, 400);
             app.run_or_alert("view.zoom", json!({"percent": percent}));
@@ -407,6 +414,7 @@ pub(crate) fn dispatch(app: &mut SheetApp, ctx: &egui::Context, key: Key, physic
 }
 
 /// Starts editing the active cell with `text` and the caret at its end.
+#[cfg(feature = "full")]
 fn edit_with(app: &mut SheetApp, text: String) {
     app.begin_edit(Some(text), false);
     if let Some(ed) = app.editor.as_mut() {

@@ -1,7 +1,10 @@
+#[cfg(feature = "editing")]
 use super::{
     CellRef, EngineError, Json, Result, Session, SheetViewMode, VIEWS_NAME, WATCH_NAME, Workbook, bad, bool_param, edit, json, ok, split_sheet,
     stash_get, stash_map, stash_set, str_param, target_sheet, u32_param,
 };
+#[cfg(not(feature = "editing"))]
+use super::{Json, Result, Session, SheetViewMode, bool_param, json, target_sheet};
 
 /// Switches a sheet's view. Like zoom, the view is saved with the file but is not an edit: it
 /// neither records an undo step nor marks a clean workbook as changed.
@@ -27,6 +30,7 @@ pub(super) fn ruler(s: &mut Session, p: &Json) -> Result<Json> {
 
 /// The Watch Window list isn't an edit (Excel doesn't undo it): undo and redo keep the current
 /// list when they swap in another snapshot of the workbook.
+#[cfg(feature = "editing")]
 pub(crate) fn keep_watch_list(from: &Workbook, to: &mut std::sync::Arc<Workbook>) {
     let find = |wb: &Workbook| wb.names.iter().find(|n| n.name == WATCH_NAME).cloned();
     let keep = find(from);
@@ -42,6 +46,7 @@ pub(crate) fn keep_watch_list(from: &Workbook, to: &mut std::sync::Arc<Workbook>
 /// undo a switch between them, and `set_view` is no undo step. So undo and redo keep each sheet's
 /// current view when they swap in another snapshot of the workbook, and a view kept this way
 /// doesn't make a saved workbook dirty.
+#[cfg(feature = "editing")]
 pub(crate) fn keep_view_modes(d: &mut crate::DocState, now: &Workbook) {
     // Sheets have no stable id. A name missing from `now` is a rename being undone or redone, which
     // keeps the sheet count and position: the sheet is the one at the same index, under a name the
@@ -67,6 +72,7 @@ pub(crate) fn keep_view_modes(d: &mut crate::DocState, now: &Workbook) {
     }
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn custom_views(s: &mut Session, p: &Json) -> Result<Json> {
     let d = s.doc()?;
     let mut views = stash_map(&d.wb, VIEWS_NAME);
@@ -118,6 +124,7 @@ pub(super) fn split(s: &mut Session, _: &Json) -> Result<Json> {
     if has { s.execute("view.unfreezePanes", json!({})) } else { s.execute("view.freezePanes", json!({})) }
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn new_window(s: &mut Session, _: &Json) -> Result<Json> {
     let id = s.new_window()?;
     let doc = s.window(id).map(|w| w.doc_uid);
@@ -126,6 +133,7 @@ pub(super) fn new_window(s: &mut Session, _: &Json) -> Result<Json> {
 
 /// The window a window command names: `window` (an id), else `doc` (a workbook id: its most
 /// recent window), else the active window.
+#[cfg(feature = "editing")]
 pub(crate) fn window_param(s: &Session, cmd: &str, p: &Json) -> Result<u64> {
     let t = crate::Target::from_json(p).map_err(|e| bad(cmd, e.to_string()))?;
     s.target_window(t).map_err(|e| bad(cmd, e.to_string()))
@@ -133,6 +141,7 @@ pub(crate) fn window_param(s: &Session, cmd: &str, p: &Json) -> Result<u64> {
 
 /// View › Arrange All. The engine has no window geometry: it picks the windows and the layout,
 /// and the interface moves its native windows ([`Session::window_list`] order, active first).
+#[cfg(feature = "editing")]
 pub(super) fn arrange_all(s: &mut Session, p: &Json) -> Result<Json> {
     let arrange = match str_param(p, "arrange").unwrap_or("tiled") {
         a @ ("tiled" | "horizontal" | "vertical" | "cascade") => a,
@@ -150,12 +159,14 @@ pub(super) fn arrange_all(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"arrange": arrange, "windows": windows}))
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn hide_window(s: &mut Session, p: &Json) -> Result<Json> {
     let id = window_param(s, "view.hideWindow", p)?;
     s.hide_window(id);
     ok()
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn unhide_window(s: &mut Session, p: &Json) -> Result<Json> {
     let id = if p.get("window").is_some_and(|v| !v.is_null()) || p.get("doc").is_some_and(|v| !v.is_null()) {
         Some(window_param(s, "view.unhideWindow", p)?)
@@ -172,6 +183,7 @@ pub(super) fn unhide_window(s: &mut Session, p: &Json) -> Result<Json> {
     ok()
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn switch_windows(s: &mut Session, p: &Json) -> Result<Json> {
     if p.get("window").is_some_and(|v| !v.is_null()) || p.get("doc").is_some_and(|v| !v.is_null()) {
         let id = window_param(s, "view.switchWindows", p)?;
@@ -180,6 +192,7 @@ pub(super) fn switch_windows(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(s.window_list())
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn watch_window(s: &mut Session, p: &Json) -> Result<Json> {
     let mut list: Vec<String> =
         stash_get(&s.doc()?.wb, WATCH_NAME).as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();

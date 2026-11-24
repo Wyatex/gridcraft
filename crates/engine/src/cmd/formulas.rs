@@ -1,13 +1,25 @@
 //! Formulas tab: AutoSum, Insert Function, names, auditing, calculation.
 
-use gridcraft_core::{CellError, CellRef, RangeRef, Value};
-use gridcraft_model::{CalcMode, Cell, DefinedName, Workbook};
-use serde_json::{Value as Json, json};
+/// The number a cell's text stands for when Excel's background check flags it as a number stored
+/// as text: a constant (not a formula's result) that would be a number if typed.
+pub fn number_stored_as_text(cell: &gridcraft_model::Cell) -> Option<f64> {
+    match &cell.value {
+        gridcraft_core::Value::Text(t) if cell.formula.is_none() => gridcraft_core::parse::number_stored_as_text(t),
+        _ => None,
+    }
+}
 
-use super::{
-    CommandSpec, EngineError, Result, Session, always, bad, bool_param, cell_param, cmd, edit, f64_param, has_doc, ok, stash, str_param,
-    target_range, target_ranges, target_sheet, u32_param,
-};
+#[cfg(feature = "editing")]
+mod full {
+    use gridcraft_core::{CellError, CellRef, RangeRef, Value};
+    use gridcraft_model::{CalcMode, Cell, DefinedName, Workbook};
+    use serde_json::{Value as Json, json};
+
+    use super::super::{
+        CommandSpec, EngineError, Result, Session, always, bad, bool_param, cell_param, cmd, edit, f64_param, has_doc, ok, stash, str_param,
+        target_range, target_ranges, target_sheet, u32_param,
+    };
+    use super::number_stored_as_text;
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -209,7 +221,7 @@ fn auto_sum(s: &mut Session, p: &Json) -> Result<Json> {
         let sheet = d.wb.active_sheet();
         edit(s, |cx| {
             for (c, f) in &writes {
-                let cell = super::edit::input_to_cell(f, sheet, *c, &mut cx.wb)?.unwrap_or_default();
+                let cell = super::super::edit::input_to_cell(f, sheet, *c, &mut cx.wb)?.unwrap_or_default();
                 cx.sheet_mut(sheet)?.set_cell(*c, cell);
                 cx.touch(sheet, *c);
             }
@@ -901,15 +913,6 @@ fn show_formulas(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
-/// The number a cell's text stands for when Excel's background check flags it as a number stored
-/// as text: a constant (not a formula's result) that would be a number if typed.
-pub fn number_stored_as_text(cell: &gridcraft_model::Cell) -> Option<f64> {
-    match &cell.value {
-        Value::Text(t) if cell.formula.is_none() => gridcraft_core::parse::number_stored_as_text(t),
-        _ => None,
-    }
-}
-
 /// Convert to Number: each number stored as text in the range becomes that number, keeping the
 /// cell's format.
 fn convert_to_number(s: &mut Session, p: &Json) -> Result<Json> {
@@ -1272,3 +1275,8 @@ mod tests {
         assert_eq!(empty.execute("formulas.pasteName", json!({})).unwrap()["names"], json!([]));
     }
 }
+}
+#[cfg(feature = "editing")]
+pub use full::{function_list, pasteable_names, specs};
+#[cfg(feature = "editing")]
+pub(crate) use full::is_r1c1;

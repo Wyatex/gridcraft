@@ -1,9 +1,13 @@
 use super::Trace;
 use super::cursor::update_cursor;
+#[cfg(feature = "full")]
 use super::editor::{in_cell_editor, list_picker, list_search, validation_arrow};
 use super::geo::Geo;
 use super::interact::{interact, paint_freeze_handles};
+#[cfg(feature = "full")]
 use super::menus::{context_menu, error_check_tag, fill_menu, fill_options_tag, filter_menu, header_menu, object_menu};
+#[cfg(not(feature = "full"))]
+use super::menus::{context_menu, header_menu};
 use super::quadrant::{QuadrantPaint, mirror_painted, paint_quadrant};
 use super::selection::{SelectionPaintInput, paint_selection};
 use super::tables::{TableHeading, paint_filter_button, table_headings};
@@ -63,8 +67,14 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
     let place = (d.uid, si);
     let mut view = app.view();
     // Page Layout view: pages on a desk, rulers above and left of the headings.
+    #[cfg(feature = "full")]
     let paper = sh.view == gridcraft_engine::model::SheetViewMode::PageLayout;
+    #[cfg(not(feature = "full"))]
+    let paper = false;
+    #[cfg(feature = "full")]
     let ruler = if paper && !app.session.hide_ruler { crate::paper_view::RULER } else { 0.0 };
+    #[cfg(not(feature = "full"))]
+    let ruler = 0.0;
     // Right-to-left sheets carry the vertical ruler on the right, beside the row headings.
     let grid_rect = if rtl {
         Rect::from_min_max(pos2(rect.left(), (rect.top() + ruler).min(rect.bottom())), pos2((rect.right() - ruler).max(rect.left()), rect.bottom()))
@@ -72,6 +82,7 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
         Rect::from_min_max(pos2((rect.left() + ruler).min(rect.right()), (rect.top() + ruler).min(rect.bottom())), rect.max)
     };
     let Some(lines) = sheet_lines(app, &wb, si) else { return };
+    #[cfg(feature = "full")]
     let make_geo = |app: &mut SheetApp, scroll: egui::Vec2| -> Geo {
         if paper {
             let probe = Geo::with_lines(sh, grid_rect, scroll, &lines);
@@ -82,9 +93,18 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
         }
         Geo::with_lines(sh, rect, scroll, &lines)
     };
+    #[cfg(not(feature = "full"))]
+    let make_geo = |_app: &mut SheetApp, scroll: egui::Vec2| -> Geo {
+        let _ = (paper, grid_rect);
+        Geo::with_lines(sh, rect, scroll, &lines)
+    };
     // Scrolling.
     let (scroll_delta, zoom_delta, modifiers, now) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers, i.time));
-    if (resp.hovered() || resp.contains_pointer()) && !crate::text_box::contains_pointer(app, ui.ctx()) {
+    #[cfg(feature = "full")]
+    let over_text_box = crate::text_box::contains_pointer(app, ui.ctx());
+    #[cfg(not(feature = "full"))]
+    let over_text_box = false;
+    if (resp.hovered() || resp.contains_pointer()) && !over_text_box {
         if zoom_delta != 1.0 {
             // egui's zoom factor is e^(speed × points); one notch is `line_scroll_speed` points.
             let notch = ui.ctx().options(|o| o.input_options.scroll_zoom_speed * o.input_options.line_scroll_speed);
@@ -143,7 +163,11 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
     }
     update_zoom_glide(app, ui, place, sh.zoom, now);
     view.scroll = view.scroll.max(egui::Vec2::ZERO);
+    #[cfg(feature = "full")]
     let (mut max_x, mut max_y) = (lines.ci.start(MAX_COLS - 20) as f32, lines.ri.start(MAX_ROWS - 40) as f32);
+    #[cfg(not(feature = "full"))]
+    let (max_x, max_y) = (lines.ci.start(MAX_COLS - 20) as f32, lines.ri.start(MAX_ROWS - 40) as f32);
+    #[cfg(feature = "full")]
     if paper {
         // Page layout units run past sheet units (margins and gaps); the end is known once the
         // pages reach the last row / column.
@@ -158,7 +182,19 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
     view.scroll.y = view.scroll.y.min(max_y);
     let mut geo = make_geo(app, view.scroll);
     // Keep the active cell (or the moving end of an extension) visible after keyboard moves.
-    ActiveCellVisibility { app, wb: &wb, si, sh, selection: &sel, paper, make_geo: &make_geo }.update(&mut view, &mut geo);
+    ActiveCellVisibility {
+        app,
+        #[cfg(feature = "full")]
+        wb: &wb,
+        #[cfg(feature = "full")]
+        si,
+        sh,
+        selection: &sel,
+        #[cfg(feature = "full")]
+        paper,
+        make_geo: &make_geo,
+    }
+    .update(&mut view, &mut geo);
     // Snap scrolling to whole rows/columns at rest like Excel? Keep smooth (better on trackpads).
     if let Some(v) = app.view_mut() {
         *v = view;
@@ -178,6 +214,7 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
     // not every frame.
     let cf_sheet = wb.sheets.get(si).map(Arc::downgrade);
     let mut cf = kept_cf(app, &wb, si);
+    #[cfg(feature = "full")]
     let quads = if geo.paper.is_some() {
         crate::paper_view::paint_pages(
             crate::paper_view::PagePaintInput {
@@ -199,6 +236,11 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
             &mut cf,
         )
     };
+    #[cfg(not(feature = "full"))]
+    let quads = paint_panes(
+        PanesInput { app, painter: &painter, geo: &geo, workbook: &wb, sheet_index: si, sheet: sh, selection: &sel, outline, tokens: &t },
+        &mut cf,
+    );
     app.grid.cf = cf_sheet.map(|s| (s, cf));
     // Objects above cells. A hidden object can't stay selected: Delete or the Format pane would act
     // on something the user can't see.
@@ -219,6 +261,7 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
     if sh.view == gridcraft_engine::model::SheetViewMode::PageBreakPreview {
         paint_pages(app, &painter.with_clip_rect(geo.cells), &geo, sh);
     }
+    #[cfg(feature = "full")]
     if geo.paper.is_some() {
         crate::paper_view::paint_headers_footers(app, ui, &painter, &geo, &wb, sh);
     }
@@ -233,6 +276,7 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
         let mirror_to = painter.add(egui::Shape::Noop);
         mirror_painted(ui.ctx(), painter.layer_id(), mirror_from.0..mirror_to.0, &geo, &objects);
     }
+    #[cfg(feature = "full")]
     if geo.paper.is_some() {
         crate::paper_view::paint_rulers(app, &painter, rect, &geo, &t);
     }
@@ -265,10 +309,13 @@ fn update_clipboard_repaint(app: &mut SheetApp, ui: &egui::Ui, now: f64) {
 
 struct ActiveCellVisibility<'a, F> {
     app: &'a mut SheetApp,
+    #[cfg(feature = "full")]
     wb: &'a Workbook,
+    #[cfg(feature = "full")]
     si: usize,
     sh: &'a Sheet,
     selection: &'a gridcraft_engine::Selection,
+    #[cfg(feature = "full")]
     paper: bool,
     make_geo: &'a F,
 }
@@ -283,6 +330,10 @@ fn selection_outline(
     now: f64,
 ) -> Rect {
     let pointer_selecting = ui.input(|i| i.pointer.any_down());
+    #[cfg(feature = "full")]
+    let animate = app.ui.animations && ui.ctx().global_style().animation_time > 0.0 && !app.shots.in_flight() && !pointer_selecting;
+    #[cfg(not(feature = "full"))]
+    let animate = app.ui.animations && ui.ctx().global_style().animation_time > 0.0 && !pointer_selecting;
     let outline = app.grid.glide.frame(crate::selection_glide::Frame {
         place,
         range: sel.current(),
@@ -290,7 +341,7 @@ fn selection_outline(
         view: geo.cells,
         now,
         frame_nr: ui.ctx().cumulative_frame_nr(),
-        animate: app.ui.animations && ui.ctx().global_style().animation_time > 0.0 && !app.shots.in_flight() && !pointer_selecting,
+        animate,
     });
     if app.grid.glide.is_gliding() {
         ui.ctx().request_repaint();
@@ -304,23 +355,30 @@ impl<F: Fn(&mut SheetApp, egui::Vec2) -> Geo> ActiveCellVisibility<'_, F> {
             return;
         }
         let app = &mut *self.app;
+        #[cfg(feature = "full")]
         let wb = self.wb;
+        #[cfg(feature = "full")]
         let si = self.si;
         let sh = self.sh;
         let sel = self.selection;
+        #[cfg(feature = "full")]
         let paper = self.paper;
 
         app.grid.ensure_visible = false;
         let moving = std::mem::take(&mut app.grid.reveal_moving_end);
         let cell = if moving { sel.moving_end() } else { sel.active };
         let from = app.grid.reveal_from.take();
+        #[cfg(feature = "full")]
         let target = app.editor.as_ref().and_then(|e| e.point_cell).unwrap_or(cell);
+        #[cfg(not(feature = "full"))]
+        let target = cell;
         // A whole column's moving end sits on the sheet's last row (a whole row's on its last
         // column): when an extension moves it only across, the view keeps its place the other way.
         // An extension that reaches the last row itself (Ctrl+Shift+Down past the data) still
         // follows it.
         let extended = (moving && target == cell).then(|| sel.current());
         let before = view.scroll;
+        #[cfg(feature = "full")]
         if paper {
             crate::paper_view::ensure_covers(app, wb, si, target);
             *geo = (self.make_geo)(app, view.scroll);
@@ -371,29 +429,44 @@ fn show_grid_interactions(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Re
             app.grid.touch_pan = false;
         }
     } else {
+        #[cfg(feature = "full")]
         crate::paper_view::interact(app, ui, resp, geo, sh, wb);
         interact(app, ui, resp, geo, sh, wb);
     }
     update_cursor(app, ui, resp, geo, sh);
-    crate::text_box::show(app, ui, geo, sh);
-    if app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) {
-        in_cell_editor(app, ui, geo, sh, wb);
+    #[cfg(feature = "full")]
+    {
+        crate::text_box::show(app, ui, geo, sh);
+        if app.editor.as_ref().is_some_and(|e| !e.from_formula_bar) {
+            in_cell_editor(app, ui, geo, sh, wb);
+        }
+        list_search(app, ui, geo, sh);
+        filter_menu(app, ui, geo, previous_popups.0 == app.grid.filter_menu);
+        list_picker(app, ui, geo, previous_popups.1 == app.grid.list_picker);
+        header_menu(app, ui, previous_popups.2 == app.grid.header_menu);
+        context_menu(app, ui);
+        fill_menu(app, ui, previous_popups.3 == app.grid.fill_menu);
+        fill_options_tag(app, ui, geo, sh);
+        object_menu(app, ui);
+        error_check_tag(app, ui, geo, sh);
     }
-    list_search(app, ui, geo, sh);
-    filter_menu(app, ui, geo, previous_popups.0 == app.grid.filter_menu);
-    list_picker(app, ui, geo, previous_popups.1 == app.grid.list_picker);
-    header_menu(app, ui, previous_popups.2 == app.grid.header_menu);
-    context_menu(app, ui);
-    fill_menu(app, ui, previous_popups.3 == app.grid.fill_menu);
-    fill_options_tag(app, ui, geo, sh);
-    object_menu(app, ui);
-    error_check_tag(app, ui, geo, sh);
+    #[cfg(not(feature = "full"))]
+    {
+        let _ = previous_popups.0;
+        let _ = previous_popups.1;
+        let _ = previous_popups.3;
+        header_menu(app, ui, previous_popups.2 == app.grid.header_menu);
+        context_menu(app, ui);
+    }
 }
 
 fn update_zoom_glide(app: &mut SheetApp, ui: &egui::Ui, place: (u64, usize), zoom: u16, now: f64) {
     let mut zooming = WheelZoom::at(app, place, zoom, now);
     if let Some((to, shown)) = zooming.glide {
+        #[cfg(feature = "full")]
         let glides = app.ui.animations && ui.ctx().global_style().animation_time > 0.0 && !app.shots.in_flight();
+        #[cfg(not(feature = "full"))]
+        let glides = app.ui.animations && ui.ctx().global_style().animation_time > 0.0;
         let share = egui::emath::exponential_smooth_factor(0.9, 0.1, ui.input(|i| i.stable_dt).min(0.1));
         let z = if glides { zoom_glide_step(shown, to, share) } else { to };
         let from = Trace::key(app);
@@ -708,6 +781,7 @@ pub(crate) struct OverlayInput<'a> {
 pub(crate) fn paint_overlays(input: OverlayInput<'_>) {
     let OverlayInput { app, ui, painter: p, geo, workbook: wb, sheet_index: si, sheet: sh, selection: sel } = input;
     // Validation dropdown arrow for the active cell.
+    #[cfg(feature = "full")]
     if app.editor.is_none()
         && let Some(r) = validation_arrow(sh, geo, sel.active)
     {
@@ -717,7 +791,11 @@ pub(crate) fn paint_overlays(input: OverlayInput<'_>) {
         crate::icons::paint_on_sheet(p, r.shrink(3.0), crate::icons::Icon::Chevron, t.sheet_control_text);
     }
     // Input message of the active cell's validation, hidden while its list is open: it would cover the items.
-    if app.editor.is_none()
+    #[cfg(feature = "full")]
+    let not_editing = app.editor.is_none();
+    #[cfg(not(feature = "full"))]
+    let not_editing = true;
+    if not_editing
         && app.grid.list_picker != Some(sel.active)
         && let Some(dv) = sh.validations.iter().find(|d| d.ranges.iter().any(|r| r.contains(sel.active)))
         && dv.show_input
@@ -771,13 +849,19 @@ pub(crate) fn paint_overlays(input: OverlayInput<'_>) {
     }
     // Hyperlink tooltip.
     if let Some(h) = hover.and_then(|c| sh.hyperlinks.get(&c))
-        && app.editor.is_none()
+        && {
+            #[cfg(feature = "full")]
+            { app.editor.is_none() }
+            #[cfg(not(feature = "full"))]
+            { true }
+        }
     {
         let tip = h.tooltip.clone().unwrap_or_else(|| format!("{}\nClick once to follow. Click and hold to select this cell.", h.target));
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::unique("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
             ui.label(tip);
         });
     }
+    #[cfg(feature = "full")]
     if let Some(o) = &app.grid.macro_overlay {
         crate::macro_editor::paint_overlay(p, geo, sh, o);
     }

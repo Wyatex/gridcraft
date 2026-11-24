@@ -12,17 +12,32 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "latex")]
 mod omml;
 
 use std::ops::Range;
+#[cfg(feature = "latex")]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+#[cfg(feature = "latex")]
 use ratex_font::FontId;
+#[cfg(feature = "latex")]
 use ratex_types::color::Color;
+#[cfg(feature = "latex")]
 use ratex_types::display_item::{DisplayItem, DisplayList};
+#[cfg(feature = "latex")]
 use ratex_types::path_command::PathCommand;
 
+#[cfg(feature = "latex")]
+use imp::{check_caps, guarded, parse};
+#[cfg(feature = "latex")]
 pub use omml::to_omml;
+
+/// Converts `latex` into Office MathML (`m:oMath`) when `latex` is enabled.
+#[cfg(not(feature = "latex"))]
+pub fn to_omml(_latex: &str, _size_pt: f32, _ink: Option<[u8; 3]>) -> Result<String, MathError> {
+    Err(MathError::new("LaTeX equations are disabled in this build.", None))
+}
 
 /// Longest source accepted, in bytes.
 pub const MAX_SOURCE_BYTES: usize = 4096;
@@ -176,19 +191,33 @@ pub enum PathCmd {
 }
 
 /// Lays `latex` out. Errors carry the offending span when RaTeX reports one.
+#[cfg(feature = "latex")]
 pub fn layout(latex: &str) -> Result<MathList, MathError> {
-    check_caps(latex)?;
-    guarded(|| {
-        let nodes = parse(latex)?;
+    imp::check_caps(latex)?;
+    imp::guarded(|| {
+        let nodes = imp::parse(latex)?;
         let lb = ratex_layout::layout(&nodes, &ratex_layout::LayoutOptions::default());
-        convert(&ratex_layout::to_display_list(&lb))
+        imp::convert(&ratex_layout::to_display_list(&lb))
     })
 }
 
+/// Lays `latex` out when `latex` is enabled.
+#[cfg(not(feature = "latex"))]
+pub fn layout(_latex: &str) -> Result<MathList, MathError> {
+    Err(MathError::new("LaTeX equations are disabled in this build.", None))
+}
+
 /// Whether `latex` parses, without laying it out (cheap enough to run on every keystroke).
+#[cfg(feature = "latex")]
 pub fn check(latex: &str) -> Result<(), MathError> {
-    check_caps(latex)?;
-    guarded(|| parse(latex).map(|_| ()))
+    imp::check_caps(latex)?;
+    imp::guarded(|| imp::parse(latex).map(|_| ()))
+}
+
+/// Checks `latex` syntax when `latex` is enabled.
+#[cfg(not(feature = "latex"))]
+pub fn check(_latex: &str) -> Result<(), MathError> {
+    Err(MathError::new("LaTeX equations are disabled in this build.", None))
 }
 
 /// The equation gallery (Insert › Equation): GridCraft's own examples, as (name, LaTeX).
@@ -201,30 +230,37 @@ pub const GALLERY: &[(&str, &str)] = &[
     ("2\u{00D7}2 matrix", "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"),
 ];
 
-/// Runs `f` so that a panic inside it becomes an error.
-fn guarded<T>(f: impl FnOnce() -> Result<T, MathError>) -> Result<T, MathError> {
-    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| Err(MathError::new("This equation could not be laid out.", None)))
-}
+#[cfg(feature = "latex")]
+mod imp {
+    use super::{
+        AssertUnwindSafe, Color, DisplayItem, DisplayList, Face, FontId, Glyph, Item, MAX_CELLS, MAX_DEPTH, MAX_EM, MAX_ITEMS, MAX_SOURCE_BYTES,
+        MathError, MathList, Path, PathCmd, PathCommand, Range, Rule, SOURCE_TOO_LONG, catch_unwind,
+    };
 
-#[cfg(test)]
-thread_local! {
-    /// Test hook: makes the next guarded parse panic, to prove the guard holds.
-    static INJECT_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-fn parse(latex: &str) -> Result<Vec<ratex_parser::ParseNode>, MathError> {
-    #[cfg(test)]
-    if INJECT_PANIC.with(|p| p.replace(false)) {
-        panic!("injected");
+    /// Runs `f` so that a panic inside it becomes an error.
+    pub(super) fn guarded<T>(f: impl FnOnce() -> Result<T, MathError>) -> Result<T, MathError> {
+        catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| Err(MathError::new("This equation could not be laid out.", None)))
     }
-    ratex_parser::parse(latex).map_err(|e| {
-        let span = e.loc.and_then(|l| {
-            let (s, t) = (l.start.min(latex.len()), l.end.min(latex.len()));
-            (latex.is_char_boundary(s) && latex.is_char_boundary(t)).then_some(s..t.max(s))
-        });
-        MathError::new(e.message, span)
-    })
-}
+
+    #[cfg(test)]
+    thread_local! {
+        /// Test hook: makes the next guarded parse panic, to prove the guard holds.
+        pub(super) static INJECT_PANIC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    pub(super) fn parse(latex: &str) -> Result<Vec<ratex_parser::ParseNode>, MathError> {
+        #[cfg(test)]
+        if INJECT_PANIC.with(|p| p.replace(false)) {
+            panic!("injected");
+        }
+        ratex_parser::parse(latex).map_err(|e| {
+            let span = e.loc.and_then(|l| {
+                let (s, t) = (l.start.min(latex.len()), l.end.min(latex.len()));
+                (latex.is_char_boundary(s) && latex.is_char_boundary(t)).then_some(s..t.max(s))
+            });
+            MathError::new(e.message, span)
+        })
+    }
 
 /// Control words that define or rebind macros. User macros have no use in an equation, and
 /// RaTeX caps only how many expansions run, not how large they grow, so a self-referencing
@@ -259,7 +295,7 @@ impl Grid {
 }
 
 /// The size, nesting, macro and matrix caps, checked before RaTeX sees the source.
-fn check_caps(latex: &str) -> Result<(), MathError> {
+pub(super) fn check_caps(latex: &str) -> Result<(), MathError> {
     if latex.len() > MAX_SOURCE_BYTES {
         return Err(SOURCE_TOO_LONG.clone());
     }
@@ -453,7 +489,7 @@ fn em(v: f64) -> Result<f32, MathError> {
     if v.is_finite() && v.abs() <= f64::from(MAX_EM) { Ok(v as f32) } else { Err(MathError::new("This equation is too large to draw.", None)) }
 }
 
-fn convert(dl: &DisplayList) -> Result<MathList, MathError> {
+pub(super) fn convert(dl: &DisplayList) -> Result<MathList, MathError> {
     if dl.items.len() > MAX_ITEMS {
         return Err(MathError::new("This equation is too large to draw.", None));
     }
@@ -524,7 +560,7 @@ fn glyph(x: f32, y: f32, size: f32, font: &str, code: u32, color: Option<[u8; 3]
 }
 
 #[derive(Clone, Copy)]
-enum Style {
+pub(super) enum Style {
     DoubleStruck,
     Script,
     Fraktur,
@@ -533,7 +569,7 @@ enum Style {
 
 /// The Mathematical Alphanumeric Symbols letter for `c` (Unicode 15, chapter 22.2), using the
 /// Letterlike Symbols block where Unicode put a letter before the alphanumeric block existed.
-fn styled(c: char, style: Style) -> char {
+pub(super) fn styled(c: char, style: Style) -> char {
     let letterlike = match (style, c) {
         (Style::DoubleStruck, 'C') => Some('\u{2102}'),
         (Style::DoubleStruck, 'H') => Some('\u{210D}'),
@@ -576,9 +612,11 @@ fn styled(c: char, style: Style) -> char {
     };
     char::from_u32(code).unwrap_or(c)
 }
+}
 
-#[cfg(test)]
+#[cfg(all(test, feature = "latex"))]
 mod tests {
+    use super::imp::{INJECT_PANIC, Style, check_caps, styled};
     use super::*;
 
     fn glyphs(l: &MathList) -> String {

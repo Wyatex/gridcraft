@@ -2,13 +2,31 @@
 
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{CommandSpec, Result, Session, always, bad, bool_param, cmd, edit, has_doc, ok, str_param, target_sheet, u32_param};
+#[cfg(not(feature = "editing"))]
+use super::{CommandSpec, Result, Session, always, bad, bool_param, cmd, ok, str_param};
 use crate::DocState;
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
+    let v = vec![cmd!(
+        noundo "file.open",
+        "Open…",
+        ["File"],
+        Some("Cmd+O"),
+        "{path} | {name, base64}, plus {password} for a password-protected workbook and {csvAsText?: bool} to keep every csv/tsv/txt field as text, with no number or date conversion (xlsx, xlsm, xls import, xlsb and ods data import, csv, tsv, txt, json)",
+        always,
+        open
+    )];
+    #[cfg(not(feature = "editing"))]
+    {
+        v
+    }
+    #[cfg(feature = "editing")]
+    {
+        let mut v = v;
+        v.extend([
         cmd!(noundo "file.new", "New Workbook", ["File"], Some("Cmd+N"), "{sample?: \"budget\"|\"sales\"|\"grades\"}", always, new_workbook),
-        cmd!(noundo "file.open", "Open…", ["File"], Some("Cmd+O"), "{path} | {name, base64}, plus {password} for a password-protected workbook and {csvAsText?: bool} to keep every csv/tsv/txt field as text, with no number or date conversion (xlsx, xlsm, xls import, xlsb and ods data import, csv, tsv, txt, json)", always, open),
         cmd!(noundo "file.save", "Save", ["File"], Some("Cmd+S"), "{path?} (xlsx by default; .csv/.tsv/.json/.html/.pdf by extension)", has_doc, save),
         cmd!(noundo "file.saveAs", "Save As…", ["File"], Some("Cmd+Shift+S"), "{path} (.xlsx, .csv, .tsv, .json, .html, or .pdf: a PDF of the active sheet)", has_doc, save_as),
         cmd!(query "file.saveBytes", "Encode Workbook", [], None, "{format?: xlsx|csv|tsv|json|html} → {base64}", has_doc, save_bytes),
@@ -28,9 +46,12 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(noundo "window.activate", "Switch Window", ["Window"], None, "{window} | {doc} | {index} (a window id, a workbook id, or the workbook's position in the list)", has_doc, activate_window),
         cmd!(noundo "window.close", "Close Window", ["Window"], None, "{window?, doc?, force?: bool} → {closed, document}: closes a window (the active one by default); its workbook closes with its last window, asking first when it has unsaved changes unless `force`", has_doc, close_window),
         cmd!(query "window.list", "Windows", ["Window"], None, "{} → [{window, doc, index, title, dirty, active, hidden}]", always, |s, _| Ok(s.window_list())),
-    ]
+        ]);
+        v
+    }
 }
 
+#[cfg(feature = "editing")]
 fn new_workbook(s: &mut Session, p: &Json) -> Result<Json> {
     let i = match str_param(p, "sample") {
         Some(name) => {
@@ -106,6 +127,7 @@ fn open(s: &mut Session, p: &Json) -> Result<Json> {
     )
 }
 
+#[cfg(feature = "editing")]
 fn save(s: &mut Session, p: &Json) -> Result<Json> {
     let path = match str_param(p, "path").map(str::to_string).or_else(|| s.active().and_then(|d| d.path.clone())) {
         Some(p) => p,
@@ -157,9 +179,11 @@ fn save(s: &mut Session, p: &Json) -> Result<Json> {
 
 /// Shown when a workbook with a Distinct Count PivotTable value field is saved as .xlsx for the first time (#3336): the
 /// file stores a plain Count that only GridCraft's private marker turns back into Distinct Count.
+#[cfg(feature = "editing")]
 const DISTINCT_COUNT_NOTICE: &str = "This workbook has a PivotTable with a Distinct Count value field. In the .xlsx file it is stored as a plain Count plus a marker that only GridCraft reads, so Excel's Refresh turns it into a plain count.";
 
 /// Every Distinct Count value field of the workbook, as (sheet, pivot, value) positions.
+#[cfg(feature = "editing")]
 fn distinct_count_fields(wb: &gridcraft_model::Workbook) -> Vec<(usize, usize, usize)> {
     let mut fields = Vec::new();
     for (si, sheet) in wb.sheets.iter().enumerate() {
@@ -174,6 +198,7 @@ fn distinct_count_fields(wb: &gridcraft_model::Workbook) -> Vec<(usize, usize, u
     fields
 }
 
+#[cfg(feature = "editing")]
 fn save_as(s: &mut Session, p: &Json) -> Result<Json> {
     if str_param(p, "path").is_none() {
         s.ui_requests.push(crate::UiRequest::Dialog("saveAs".into(), json!({})));
@@ -182,6 +207,7 @@ fn save_as(s: &mut Session, p: &Json) -> Result<Json> {
     save(s, p)
 }
 
+#[cfg(feature = "editing")]
 fn save_bytes(s: &mut Session, p: &Json) -> Result<Json> {
     let fmt = str_param(p, "format").unwrap_or("xlsx");
     let d = s.doc()?;
@@ -195,6 +221,7 @@ fn save_bytes(s: &mut Session, p: &Json) -> Result<Json> {
 }
 
 /// File › Close closes the active window; the workbook closes with its last window.
+#[cfg(feature = "editing")]
 fn close(s: &mut Session, p: &Json) -> Result<Json> {
     if !bool_param(p, "document").unwrap_or(false)
         && let Some(id) = s.active_window()
@@ -215,6 +242,7 @@ fn close(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"closed": true}))
 }
 
+#[cfg(feature = "editing")]
 fn export(s: &mut Session, p: &Json, ext: &str) -> Result<Json> {
     let path = str_param(p, "path").ok_or_else(|| bad("file.export", "missing `path`"))?.to_string();
     let d = s.doc()?;
@@ -232,6 +260,7 @@ fn export(s: &mut Session, p: &Json, ext: &str) -> Result<Json> {
     Ok(json!({"path": target, "bytes": bytes.len()}))
 }
 
+#[cfg(feature = "editing")]
 fn properties(s: &mut Session, p: &Json) -> Result<Json> {
     edit(s, |cx| {
         let pr = &mut cx.wb.props;
@@ -253,6 +282,7 @@ fn properties(s: &mut Session, p: &Json) -> Result<Json> {
 
 /// File › Options: reports the workbook-level settings and asks the interface to show its Options
 /// page. Nothing changes here; every setting has its own command.
+#[cfg(feature = "editing")]
 fn options(s: &mut Session, _: &Json) -> Result<Json> {
     s.ui_requests.push(crate::UiRequest::Dialog("options".into(), json!({})));
     let calculation = s.active().map(|d| {
@@ -267,6 +297,7 @@ fn options(s: &mut Session, _: &Json) -> Result<Json> {
     Ok(json!({"calculation": calculation}))
 }
 
+#[cfg(feature = "editing")]
 fn activate_window(s: &mut Session, p: &Json) -> Result<Json> {
     let id = match u32_param(p, "index").filter(|_| p.get("window").is_none_or(Json::is_null) && p.get("doc").is_none_or(Json::is_null)) {
         Some(i) => {
@@ -282,6 +313,7 @@ fn activate_window(s: &mut Session, p: &Json) -> Result<Json> {
     ok()
 }
 
+#[cfg(feature = "editing")]
 fn close_window(s: &mut Session, p: &Json) -> Result<Json> {
     let id = super::extra::window_param(s, "window.close", p)?;
     let doc = s.window(id).map(|w| w.doc_uid).unwrap_or_default();

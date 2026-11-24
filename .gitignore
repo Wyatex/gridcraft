@@ -1,7 +1,7 @@
 *~
 plan/
 /target
-/dist
+dist/
 /corpus
 /log
 .DS_Store

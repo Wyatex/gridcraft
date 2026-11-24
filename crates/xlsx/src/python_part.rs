@@ -16,21 +16,27 @@
 
 use gridcraft_formula::Expr;
 use gridcraft_model::PyCode;
-use gridcraft_model::python::{FILE_PREFIX, MAX_FORMULA_CHARS};
+#[cfg(feature = "write")]
+use gridcraft_model::python::FILE_PREFIX;
+use gridcraft_model::python::MAX_FORMULA_CHARS;
 
 use crate::IoError;
 use crate::read::Ctx;
 use crate::xml::{self, El};
 
 /// Namespace of the part.
+#[cfg(feature = "write")]
 pub const NS: &str = "http://schemas.microsoft.com/office/spreadsheetml/2023/python";
 /// Relationship type from the workbook part.
+#[cfg(feature = "write")]
 pub const REL: &str = "http://schemas.microsoft.com/office/2023/09/relationships/Python";
 /// Last segment of [`REL`], as [`crate::package::Rel::kind`] holds it.
 const REL_KIND: &str = "Python";
 /// Content type of the part.
+#[cfg(feature = "write")]
 pub const CONTENT_TYPE: &str = "application/vnd.ms-excel.python+xml";
 /// Part name we write (the format names none; the relationship finds it).
+#[cfg(feature = "write")]
 pub const PART: &str = "xl/python.xml";
 
 /// Largest Python part read.
@@ -241,14 +247,16 @@ fn with_params(code: &str, params: &[Expr]) -> String {
 
 /// The formula a Python cell is saved as: `_xlfn._xlws.PY(index,0|1)`, its code being script
 /// `index` of the part ([`write`]).
+#[cfg(feature = "write")]
 pub fn file_formula(index: usize, object: bool) -> String {
     format!("{FILE_PREFIX}PY({index},{})", u8::from(object))
 }
 
 /// The Python part holding `scripts`, in order. Only written when there is at least one: the
 /// format requires one `pythonScript` in `pythonScripts`.
+#[cfg(feature = "write")]
 pub fn write(scripts: &[String]) -> String {
-    let mut xml = format!("{}<python xmlns=\"{NS}\"><pythonScripts>", crate::write::XML_DECL);
+    let mut xml = format!("{}<python xmlns=\"{NS}\"><pythonScripts>", crate::xml::XML_DECL);
     for code in scripts {
         xml.push_str("<pythonScript><code>");
         xml.push_str(&xml::esc(&xml::encode_xstring(code)));

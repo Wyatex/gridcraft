@@ -29,12 +29,14 @@ mod python_part;
 mod read;
 mod richdata;
 mod sheet_read;
+#[cfg(feature = "write")]
 mod sheet_write;
 mod styles;
 mod tables;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 mod theme;
+#[cfg(feature = "write")]
 mod write;
 mod xls;
 mod xlsb;
@@ -47,9 +49,12 @@ use gridcraft_core::DateSystem;
 use gridcraft_model::Workbook;
 
 pub use crypto::{DecryptError, check_encryption, decrypt};
-pub use csv::{MAX_CSV_BYTES, decode_text, read_csv, read_csv_with_report, write_csv, write_csv_limited};
+#[cfg(feature = "write")]
+pub use csv::{write_csv, write_csv_limited};
+pub use csv::{MAX_CSV_BYTES, decode_text, read_csv, read_csv_with_report};
 pub use ods::read_ods;
 pub use package::MAX_PART;
+#[cfg(feature = "write")]
 pub use passthrough::rebase_links;
 pub use xls::{read_xls, read_xls_with};
 pub use xlsb::read_xlsb;
@@ -195,31 +200,79 @@ impl XlsxKind {
 
 /// Writes a workbook as an `.xlsx` package, or as an `.xlsm` one when it holds a VBA project,
 /// with the default [`FunctionInfo`].
+#[cfg(feature = "write")]
 pub fn write_xlsx(wb: &Workbook) -> Result<Vec<u8>, IoError> {
     let kind = if wb.vba_project.is_some() { XlsxKind::MacroWorkbook } else { XlsxKind::Workbook };
     write::write_xlsx(wb, kind, FunctionInfo::default())
 }
 
+#[cfg(not(feature = "write"))]
+pub fn write_xlsx(_wb: &Workbook) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("XLSX export is disabled in this build.".into()))
+}
+
 /// Writes a workbook as the given member of the `.xlsx` family, with the default [`FunctionInfo`].
+#[cfg(feature = "write")]
 pub fn write_xlsx_as(wb: &Workbook, kind: XlsxKind) -> Result<Vec<u8>, IoError> {
     write::write_xlsx(wb, kind, FunctionInfo::default())
 }
 
+#[cfg(not(feature = "write"))]
+pub fn write_xlsx_as(_wb: &Workbook, _kind: XlsxKind) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("XLSX export is disabled in this build.".into()))
+}
+
 /// [`write_xlsx_as`] with the function library's facts.
+#[cfg(feature = "write")]
 pub fn write_xlsx_with(wb: &Workbook, kind: XlsxKind, functions: FunctionInfo) -> Result<Vec<u8>, IoError> {
     write::write_xlsx(wb, kind, functions)
 }
 
+#[cfg(not(feature = "write"))]
+pub fn write_xlsx_with(_wb: &Workbook, _kind: XlsxKind, _functions: FunctionInfo) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("XLSX export is disabled in this build.".into()))
+}
+
 /// Writes a workbook as the given member of the `.xlsx` family for the file `book_name` (a bare
 /// file name, used for the workbook in a PivotChart's link to its PivotTable).
+#[cfg(feature = "write")]
 pub fn write_xlsx_named(wb: &Workbook, kind: XlsxKind, book_name: &str) -> Result<Vec<u8>, IoError> {
     write::write_xlsx_named(wb, kind, Some(book_name))
 }
 
+#[cfg(not(feature = "write"))]
+pub fn write_xlsx_named(_wb: &Workbook, _kind: XlsxKind, _book_name: &str) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("XLSX export is disabled in this build.".into()))
+}
+
 /// Writes a workbook with caller-supplied function facts and file name.
+#[cfg(feature = "write")]
 pub fn write_xlsx_named_with(wb: &Workbook, kind: XlsxKind, book_name: &str, functions: FunctionInfo) -> Result<Vec<u8>, IoError> {
     write::write_xlsx_named_with(wb, kind, Some(book_name), functions)
 }
+
+#[cfg(not(feature = "write"))]
+pub fn write_xlsx_named_with(_wb: &Workbook, _kind: XlsxKind, _book_name: &str, _functions: FunctionInfo) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("XLSX export is disabled in this build.".into()))
+}
+
+#[cfg(not(feature = "write"))]
+pub fn write_csv(_sheet: &gridcraft_model::Sheet, _delimiter: u8, _cell_text: impl FnMut(gridcraft_core::CellRef) -> String) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("CSV export is disabled in this build.".into()))
+}
+
+#[cfg(not(feature = "write"))]
+pub fn write_csv_limited(
+    _sheet: &gridcraft_model::Sheet,
+    _delimiter: u8,
+    _limit: usize,
+    _cell_text: impl FnMut(gridcraft_core::CellRef) -> String,
+) -> Result<Vec<u8>, IoError> {
+    Err(IoError::Format("CSV export is disabled in this build.".into()))
+}
+
+#[cfg(not(feature = "write"))]
+pub fn rebase_links(_wb: &mut Workbook, _from: &str, _to: &str) {}
 
 /// CSV import options.
 #[derive(Clone, Debug, PartialEq)]

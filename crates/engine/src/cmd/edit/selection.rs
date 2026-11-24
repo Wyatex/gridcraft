@@ -180,6 +180,7 @@ pub(super) fn selection_next(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"active": d.selection.active.a1()}))
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn selection_next_corner(s: &mut Session, _: &Json) -> Result<Json> {
     let d = s.doc_mut()?;
     let Some(sheet) = d.wb.active() else { return Err(EngineError::NoDocument) };

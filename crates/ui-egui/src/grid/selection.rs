@@ -101,6 +101,7 @@ pub(crate) fn paint_selection(input: SelectionPaintInput<'_>) {
     let active_here = range_in_pane(active_range, rows, cols);
     let cur_here = range_in_pane(sel.current(), rows, cols);
     // Editing a formula: outline its references instead of the selection.
+    #[cfg(feature = "full")]
     if let Some(ed) = &app.editor
         && ed.is_formula()
         && app.session.active().is_some_and(|d| d.uid == ed.doc)
@@ -131,7 +132,11 @@ pub(crate) fn paint_selection(input: SelectionPaintInput<'_>) {
         p.rect_stroke(active, 0.0, Stroke::new(1.0, t.sel_border), StrokeKind::Inside);
     }
     // Fill handle (bottom-right of the current area).
-    if app.editor.is_none() && range_in_pane(RangeRef::cell(sel.current().end), rows, cols) {
+    #[cfg(feature = "full")]
+    let show_fill_handle = app.editor.is_none() && range_in_pane(RangeRef::cell(sel.current().end), rows, cols);
+    #[cfg(not(feature = "full"))]
+    let show_fill_handle = false;
+    if show_fill_handle {
         let h = Rect::from_center_size(outline.right_bottom(), vec2(6.0, 6.0));
         p.rect_filled(h.expand(1.0), 0.0, Color32::WHITE);
         p.rect_filled(h, 0.0, t.sel_border);

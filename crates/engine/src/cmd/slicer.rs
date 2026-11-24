@@ -6,13 +6,18 @@
 //! `table.insertSlicer`) selects everything, i.e. applies no filter.
 
 use gridcraft_core::CellRef;
-use gridcraft_model::{Anchor, AnchorMode, AutoFilter, FilterCriterion, Slicer, Workbook};
+use gridcraft_model::{Slicer, Workbook};
+#[cfg(feature = "editing")]
+use gridcraft_model::{Anchor, AnchorMode, AutoFilter, FilterCriterion};
+#[cfg(feature = "editing")]
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, EngineError, Result, Session, bad, bool_param, cell_param_on, cmd, edit, f64_param, has_doc, str_param, target_sheet, u32_param,
 };
 
+#[cfg(feature = "editing")]
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(
@@ -78,6 +83,7 @@ pub fn slicer_items(wb: &Workbook, sheet: usize, sl: &Slicer) -> Vec<(String, bo
 }
 
 /// Writes the slicer's current selection into the sheet filter and re-applies it.
+#[cfg(feature = "editing")]
 fn reapply_slicer(wb: &mut Workbook, sheet: usize, id: u32) {
     let info = wb.sheet(sheet).and_then(|sh| {
         let sl = sh.slicers.iter().find(|s| s.id == id)?;
@@ -98,6 +104,7 @@ fn reapply_slicer(wb: &mut Workbook, sheet: usize, id: u32) {
     super::data::apply_filter(wb, sheet);
 }
 
+#[cfg(feature = "editing")]
 fn insert_slicer(s: &mut Session, p: &Json) -> Result<Json> {
     // A table named by `table` is found on any sheet, as the other table commands find it, and the slicer goes on that
     // table's sheet. Looked up on the active sheet only, a named table on another sheet gave "Select a cell inside a
@@ -153,6 +160,7 @@ fn insert_slicer(s: &mut Session, p: &Json) -> Result<Json> {
 }
 
 /// The target slicer: by `slicer` id, else the last one on the active sheet.
+#[cfg(feature = "editing")]
 fn find_slicer(s: &Session, p: &Json) -> Result<(usize, u32)> {
     let d = s.doc()?;
     let sh = d.wb.active().ok_or(EngineError::NoDocument)?;
@@ -163,6 +171,7 @@ fn find_slicer(s: &Session, p: &Json) -> Result<(usize, u32)> {
     idx.and_then(|i| sh.slicers.get(i).map(|x| (i, x.id))).ok_or_else(|| bad("slicer", "no slicer on this sheet"))
 }
 
+#[cfg(feature = "editing")]
 fn slicer_toggle(s: &mut Session, p: &Json) -> Result<Json> {
     let (idx, id) = find_slicer(s, p)?;
     let value = str_param(p, "value").ok_or_else(|| bad("slicer.toggle", "missing `value`"))?.to_string();
@@ -204,6 +213,7 @@ fn slicer_toggle(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn slicer_select_all(s: &mut Session, p: &Json) -> Result<Json> {
     let (idx, id) = find_slicer(s, p)?;
     let sheet = s.doc()?.wb.active_sheet();
@@ -217,6 +227,7 @@ fn slicer_select_all(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 fn slicer_delete(s: &mut Session, p: &Json) -> Result<Json> {
     let (idx, id) = find_slicer(s, p)?;
     let sheet = s.doc()?.wb.active_sheet();

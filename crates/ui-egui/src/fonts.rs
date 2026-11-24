@@ -286,6 +286,7 @@ fn installed_in(cat: &[Face], names: &[String]) -> Vec<String> {
 /// The font list a combo box shows: the standard [`crate::ribbon::FONTS`] names first (what Excel
 /// offers, and what we substitute), then every other installed family A–Z. Never blocks: until the
 /// background scan finishes it returns just the standard names.
+#[cfg(feature = "full")]
 pub fn families() -> Vec<String> {
     let mut out: Vec<String> = crate::ribbon::FONTS.iter().map(|s| s.to_string()).collect();
     let Some(cat) = catalog_now() else { return out };

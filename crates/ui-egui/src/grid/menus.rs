@@ -1,9 +1,26 @@
+#[cfg(feature = "full")]
 use super::editor::popup_dismissed;
+#[cfg(feature = "full")]
 use super::geo::Geo;
+#[cfg(feature = "full")]
 use super::tables::filter_table_range;
+#[cfg(feature = "full")]
 use super::{Arc, Drag, FillTag, RangeRef, Rect, Sense, Sheet, SheetApp, Stroke, Tokens, col_to_letters, json, pos2, vec2};
+#[cfg(not(feature = "full"))]
+use super::{SheetApp, json, vec2};
+
+#[cfg(not(feature = "full"))]
+fn popup_dismissed(resp: &egui::Response, was_open: bool) -> bool {
+    was_open
+        && (resp.ctx.input(|i| i.key_pressed(egui::Key::Escape))
+            || (resp.ctx.input(|i| i.pointer.any_pressed())
+                && !resp.contains_pointer()
+                && !resp.hovered()
+                && resp.ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !resp.rect.contains(p))))
+}
 
 /// Draws the filter-header popup: sort, search/select-all, apply/clear, a lazily installed table autofilter, new-open search focus and dismissal.
+#[cfg(feature = "full")]
 pub(super) fn filter_menu(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, was_open: bool) {
     let Some((col, row, at)) = app.grid.filter_menu else { return };
     let Some(d) = app.session.active() else { return };
@@ -13,7 +30,8 @@ pub(super) fn filter_menu(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, was_
     let _ = geo;
     // Tables get an autofilter on demand.
     let table_range = filter_table_range(sh, col, row);
-    if sh.autofilter.is_none()
+    if !app.read_only
+        && sh.autofilter.is_none()
         && let Some(r) = table_range
     {
         let _ = app.session.run("data.filter", json!({"range": r.a1()}));
@@ -132,45 +150,57 @@ pub(super) fn context_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
             // On a cell with a link Excel offers to edit, open or remove it (#2120).
             let link =
                 app.session.active().and_then(|d| d.wb.active().and_then(|sh| sh.hyperlinks.get(&d.selection.active)).map(|l| l.target.clone()));
-            let mut items: Vec<(&str, &str)> = vec![
-                ("Cut", "edit.cut"),
-                ("Copy", "edit.copy"),
-                ("Paste", "edit.paste"),
-                ("Paste Special…", "ui:pasteSpecial"),
-                ("-", ""),
-                ("Insert…", "ui:insertCells"),
-                ("Delete…", "ui:deleteCells"),
-                ("Clear Contents", "edit.clearContents"),
-                ("-", ""),
-                ("Filter by Selected Cell's Value", "ui:filterValue"),
-                ("Sort A to Z", "data.sortAscending"),
-                ("Sort Z to A", "data.sortDescending"),
-                ("-", ""),
-                ("New Comment", "ui:newComment"),
-                ("New Note", "ui:newNote"),
-                ("-", ""),
-                ("Format Cells…", "ui:formatCells"),
-                ("Pick From Drop-down List…", "ui:pickList"),
-                ("Define Name…", "ui:defineName"),
-                ("Link…", "ui:insertLink"),
-            ];
-            if let Some(item) = insert_copied {
-                items.insert(6, item);
-            }
-            if link.is_some()
-                && let Some(i) = items.iter().position(|(_, id)| *id == "ui:insertLink")
-            {
-                items.splice(
-                    i..=i,
-                    [("Edit Hyperlink…", "ui:insertLink"), ("Open Hyperlink", "ui:openLink"), ("Remove Hyperlink", "edit.clearHyperlinks")],
-                );
-            }
-            if show_details_offered(app)
-                && let Some(i) = items.iter().position(|(_, id)| *id == "data.sortDescending")
-            {
-                items.insert(i + 1, ("-", ""));
-                items.insert(i + 2, ("Show Details", "pivot.showDetails"));
-            }
+            let items: Vec<(&str, &str)> = if app.read_only {
+                let mut v = vec![("Copy", "edit.copy")];
+                if link.is_some() {
+                    v.push(("Open Hyperlink", "ui:openLink"));
+                }
+                v
+            } else {
+                let mut v: Vec<(&str, &str)> = vec![
+                    ("Cut", "edit.cut"),
+                    ("Copy", "edit.copy"),
+                    ("Paste", "edit.paste"),
+                    ("Paste Special…", "ui:pasteSpecial"),
+                    ("-", ""),
+                    ("Insert…", "ui:insertCells"),
+                    ("Delete…", "ui:deleteCells"),
+                    ("Clear Contents", "edit.clearContents"),
+                    ("-", ""),
+                    ("Filter by Selected Cell's Value", "ui:filterValue"),
+                    ("Sort A to Z", "data.sortAscending"),
+                    ("Sort Z to A", "data.sortDescending"),
+                    ("-", ""),
+                    ("New Comment", "ui:newComment"),
+                    ("New Note", "ui:newNote"),
+                    ("-", ""),
+                    ("Format Cells…", "ui:formatCells"),
+                    ("Pick From Drop-down List…", "ui:pickList"),
+                    ("Define Name…", "ui:defineName"),
+                    ("Link…", "ui:insertLink"),
+                ];
+                if let Some(item) = insert_copied {
+                    v.insert(6, item);
+                }
+                if link.is_some()
+                    && let Some(i) = v.iter().position(|(_, id)| *id == "ui:insertLink")
+                {
+                    v.splice(
+                        i..=i,
+                        [("Edit Hyperlink…", "ui:insertLink"), ("Open Hyperlink", "ui:openLink"), ("Remove Hyperlink", "edit.clearHyperlinks")],
+                    );
+                }
+                #[cfg(feature = "full")]
+                if show_details_offered(app)
+                    && let Some(i) = v.iter().position(|(_, id)| *id == "data.sortDescending")
+                {
+                    v.insert(i + 1, ("-", ""));
+                    v.insert(i + 2, ("Show Details", "pivot.showDetails"));
+                }
+                v
+            };
+            #[cfg(not(feature = "full"))]
+            let _ = &items;
             let lang = crate::i18n::current(ui.ctx());
             for (label, id) in items {
                 if label == "-" {
@@ -180,21 +210,32 @@ pub(super) fn context_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
                 if ui.add(egui::Button::new(lang.tr(label)).frame_when_inactive(false).min_size(vec2(190.0, 20.0))).clicked() {
                     close = true;
                     match id {
+                        #[cfg(feature = "full")]
                         "ui:pasteSpecial" => app.open_dialog("pasteSpecial", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:insertPaste" => app.open_dialog("insertPaste", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:insertCells" => app.open_dialog("insertCells", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:deleteCells" => app.open_dialog("deleteCells", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:formatCells" => app.open_dialog("formatCells", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:newComment" => app.open_dialog("comment", json!({"threaded": true})),
+                        #[cfg(feature = "full")]
                         "ui:newNote" => app.open_dialog("comment", json!({"threaded": false})),
+                        #[cfg(feature = "full")]
                         "ui:defineName" => app.open_dialog("defineName", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:insertLink" => app.open_dialog("insertLink", json!({})),
                         "ui:openLink" => {
                             if let Some(target) = &link {
                                 super::interact::follow_link(app, target);
                             }
                         }
+                        #[cfg(feature = "full")]
                         "ui:pickList" => app.open_dialog("pickList", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:filterValue" => {
                             if let Some(d) = app.session.active() {
                                 let a = d.selection.active;
@@ -209,6 +250,7 @@ pub(super) fn context_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
                         "edit.copy" | "edit.cut" => {
                             app.copy_to_clipboard(ui.ctx(), id);
                         }
+                        #[cfg(feature = "full")]
                         "edit.paste" => app.paste_from_clipboard(),
                         other => app.run_or_alert(other, json!({})),
                     }
@@ -236,6 +278,7 @@ pub(super) fn context_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
 /// is a value, subtotal or grand total cell of a PivotTable, or a cell of a report that is out of
 /// date, where running the command says so. Labels and headers of a current report don't offer it,
 /// and no cell does while the PivotTable's Enable show details option is off.
+#[cfg(feature = "full")]
 fn show_details_offered(app: &mut SheetApp) -> bool {
     let Some(d) = app.session.active() else { return false };
     let (si, at) = (d.wb.active_sheet(), d.selection.active);
@@ -261,20 +304,24 @@ fn show_details_offered(app: &mut SheetApp) -> bool {
 }
 
 /// The ways to fill a dragged range, as the fill menu and the Auto Fill Options button list them.
+#[cfg(feature = "full")]
 const FILL_MODES: [(&str, &str); 4] =
     [("Copy Cells", "copy"), ("Fill Series", "extend"), ("Fill Formatting Only", "formats"), ("Fill Without Formatting", "values")];
 
 /// The ways to fill from a date, which both menus add after [`FILL_MODES`] when the source starts
 /// with one.
+#[cfg(feature = "full")]
 const DATE_FILL_MODES: [(&str, &str); 4] = [("Fill Days", "days"), ("Fill Weekdays", "weekdays"), ("Fill Months", "months"), ("Fill Years", "years")];
 
 /// The fill modes the menus list for a fill from `src` on the active sheet.
+#[cfg(feature = "full")]
 fn fill_modes(app: &SheetApp, src: RangeRef) -> Vec<(&'static str, &'static str)> {
     let dates = app.session.active().is_some_and(|d| gridcraft_engine::fill::starts_with_date(&d.wb, d.wb.active_sheet(), src));
     FILL_MODES.into_iter().chain(DATE_FILL_MODES.into_iter().filter(|_| dates)).collect()
 }
 
 /// Remembers the fill just made so the Auto Fill Options button can offer the other ways.
+#[cfg(feature = "full")]
 pub(super) fn set_fill_tag(app: &mut SheetApp, src: RangeRef, target: RangeRef) {
     app.grid.fill_tag =
         app.session.active().map(|d| FillTag { src, target, uid: d.uid, sheet: d.wb.active_sheet(), revision: d.revision, undo_len: d.undo.len() });
@@ -285,6 +332,7 @@ pub(super) fn set_fill_tag(app: &mut SheetApp, src: RangeRef, target: RangeRef) 
 /// or Fill Without Formatting, and from a date also as Fill Days, Fill Weekdays, Fill Months or
 /// Fill Years: it undoes the drag's fill, then runs `edit.autoFill` in that mode.
 /// The button goes away as soon as anything else changes the workbook or the selection moves.
+#[cfg(feature = "full")]
 pub(super) fn fill_options_tag(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet) {
     let Some(tag) = app.grid.fill_tag.clone() else { return };
     let current = app.session.active().is_some_and(|d| {
@@ -353,6 +401,7 @@ pub(super) fn fill_options_tag(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo,
 }
 
 /// The menu a right-drag of the fill handle opens on release, as in Excel.
+#[cfg(feature = "full")]
 pub(super) fn fill_menu(app: &mut SheetApp, ui: &mut egui::Ui, was_open: bool) {
     let Some((src, target, at)) = app.grid.fill_menu else { return };
     let mut close = false;
@@ -387,7 +436,12 @@ pub(super) fn fill_menu(app: &mut SheetApp, ui: &mut egui::Ui, was_open: bool) {
 
 /// The right-click menu of a chart, picture, shape, slicer or form control (Edit Text and Assign
 /// Action for a button, and Format Control, before Delete).
+#[cfg(feature = "full")]
 pub(super) fn object_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
+    if app.read_only {
+        app.grid.object_menu = None;
+        return;
+    }
     let Some((at, kind, id)) = app.grid.object_menu else { return };
     let mut close = false;
     let resp = egui::Area::new(egui::Id::unique("object_context")).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
@@ -440,8 +494,9 @@ pub(super) fn object_menu(app: &mut SheetApp, ui: &mut egui::Ui) {
 
 /// The warning button beside an active cell holding a number stored as text, as in Excel: its
 /// menu names the problem and offers Convert to Number for the selection (#1994).
+#[cfg(feature = "full")]
 pub(super) fn error_check_tag(app: &mut SheetApp, ui: &mut egui::Ui, geo: &Geo, sh: &Sheet) {
-    if app.editor.is_some() || app.dialog.is_some() || sh.show_formulas || app.grid.drag != Drag::None {
+    if app.read_only || app.editor.is_some() || app.dialog.is_some() || sh.show_formulas || app.grid.drag != Drag::None {
         return;
     }
     let Some(active) = app.session.active().map(|d| d.selection.active) else { return };
@@ -490,7 +545,9 @@ pub(super) fn header_menu(app: &mut SheetApp, ui: &mut egui::Ui, was_open: bool)
         egui::Frame::popup(ui.style()).show(ui, |ui| {
             ui.set_min_width(190.0);
             let insert_copied = insert_copied_item(app);
-            let mut items: Vec<(&str, &str)> = if rows {
+            let mut items: Vec<(&str, &str)> = if app.read_only {
+                vec![("Copy", "edit.copy")]
+            } else if rows {
                 vec![
                     ("Cut", "edit.cut"),
                     ("Copy", "edit.copy"),
@@ -526,7 +583,9 @@ pub(super) fn header_menu(app: &mut SheetApp, ui: &mut egui::Ui, was_open: bool)
                     ("Group", "data.group"),
                 ]
             };
-            if let Some(item) = insert_copied {
+            if !app.read_only
+                && let Some(item) = insert_copied
+            {
                 items.insert(5, item);
             }
             let lang = crate::i18n::current(ui.ctx());
@@ -538,13 +597,18 @@ pub(super) fn header_menu(app: &mut SheetApp, ui: &mut egui::Ui, was_open: bool)
                 if ui.add(egui::Button::new(lang.tr(label)).frame_when_inactive(false).min_size(vec2(180.0, 20.0))).clicked() {
                     close = true;
                     match id {
+                        #[cfg(feature = "full")]
                         "ui:insertPaste" => app.open_dialog("insertPaste", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:rowHeight" => app.open_dialog("rowHeight", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:formatCells" => app.open_dialog("formatCells", json!({})),
+                        #[cfg(feature = "full")]
                         "ui:columnWidth" => app.open_dialog("columnWidth", json!({})),
                         "edit.copy" | "edit.cut" => {
                             app.copy_to_clipboard(ui.ctx(), id);
                         }
+                        #[cfg(feature = "full")]
                         "edit.paste" => app.paste_from_clipboard(),
                         other => app.run_or_alert(other, json!({})),
                     }
@@ -572,6 +636,7 @@ fn insert_copied_item(app: &SheetApp) -> Option<(&'static str, &'static str)> {
     }
 }
 
+#[cfg(feature = "full")]
 pub(super) fn is_checkbox(sh: &Sheet, app: &SheetApp) -> bool {
     let Some(d) = app.session.active() else { return false };
     d.wb.styles.get(sh.style_id(d.selection.active)).num_fmt.as_str() == "checkbox"

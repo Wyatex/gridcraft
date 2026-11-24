@@ -6,23 +6,34 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "editing")]
 pub mod catalog;
 pub mod cf;
 pub mod chart_data;
+#[cfg(all(feature = "editing", feature = "pdf"))]
 mod chart_svg;
+#[cfg(feature = "editing")]
 mod clip_html;
 pub mod cmd;
 pub mod display;
+#[cfg(feature = "editing")]
 pub mod fill;
 pub mod io;
 pub mod links;
+#[cfg(feature = "editing")]
 pub mod macros;
 pub mod outline;
+#[cfg(feature = "editing")]
 pub mod paper;
+#[cfg(feature = "editing")]
 pub mod pivot;
+#[cfg(feature = "editing")]
 pub mod pivot_calc;
+#[cfg(feature = "editing")]
 pub mod recent;
+#[cfg(feature = "editing")]
 pub mod record;
+#[cfg(feature = "editing")]
 pub mod sample;
 pub mod selection;
 pub mod tables;
@@ -109,6 +120,7 @@ struct OpenGroup {
     redo: Vec<HistoryEntry>,
     /// Where the recording was when the group began (`None` when nothing was recording): a
     /// rollback takes back the steps recorded since, as it takes back their edits.
+    #[cfg(feature = "editing")]
     recorded: Option<(u64, u64)>,
 }
 
@@ -277,10 +289,12 @@ fn history_retained_bytes(older: &Workbook, newer: &Workbook) -> usize {
     bytes
 }
 
+#[cfg(feature = "editing")]
 fn push_history(history: &mut Vec<HistoryEntry>, label: String, wb: Arc<Workbook>, next: &Workbook, selection: Selection) {
     push_history_with_budget(history, label, wb, next, selection, UNDO_BYTES_LIMIT);
 }
 
+#[cfg(feature = "editing")]
 fn push_history_with_budget(
     history: &mut Vec<HistoryEntry>,
     label: String,
@@ -327,6 +341,7 @@ impl DocState {
     /// read from bytes (a file, a download, a recovery copy), [`Trust::Local`] only for a workbook
     /// made in this session.
     pub fn new(mut wb: Workbook, path: Option<String>, title: String, trust: Trust) -> DocState {
+        #[cfg(feature = "editing")]
         let _ = gridcraft_model::PIVOT_INDEXER.set(pivot::index_cells);
         let mut calc = Calc::new();
         calc.recalc_all(&mut wb);
@@ -343,7 +358,10 @@ impl DocState {
     fn with_calc(mut wb: Workbook, calc: Calc, path: Option<String>, title: String, trust: Trust) -> DocState {
         // Equations arrive without a layout (files never store one); painting reads only the cache.
         wb.refresh_equations();
+        #[cfg(feature = "editing")]
         let scripts_trusted = !cmd::extra::has_scripts(&wb);
+        #[cfg(not(feature = "editing"))]
+        let scripts_trusted = true;
         let wb = Arc::new(wb);
         let sel = Selection::at(wb.active().map(|s| s.view_active).unwrap_or_default());
         DocState {
@@ -432,7 +450,7 @@ pub struct Prefs {
     pub status_bar: StatusBarStats,
     /// Formulas › Recently Used: the functions most recently entered in a formula, newest first
     /// (at most [`recent::MAX`]; see [`recent`]). An application list, as in Excel.
-    #[serde(deserialize_with = "recent::lenient")]
+    #[cfg_attr(feature = "editing", serde(deserialize_with = "recent::lenient"))]
     pub recent_functions: Vec<String>,
 }
 
@@ -468,7 +486,10 @@ impl Default for Prefs {
             user_dictionary: vec![],
             formula_bar: true,
             status_bar: StatusBarStats::default(),
+            #[cfg(feature = "editing")]
             recent_functions: recent::defaults(),
+            #[cfg(not(feature = "editing"))]
+            recent_functions: Vec::new(),
         }
     }
 }
@@ -496,6 +517,9 @@ pub type TextWidth = Arc<dyn Fn(&str, &model::Font, bool) -> f32 + Send + Sync>;
 #[derive(Default)]
 pub struct Session {
     docs: Vec<DocState>,
+    /// When enabled, only commands that inspect or navigate the workbook may run.
+    /// Hosts such as the preview viewer use this to enforce read-only access at the engine boundary.
+    read_only: bool,
     /// Index in `docs` of the active window's workbook.
     active: usize,
     /// Windows on the open workbooks ([`windows`]); every workbook has at least one.
@@ -527,19 +551,24 @@ pub struct Session {
     pub recording: Option<usize>,
     /// The recording buffer while a recorder runs ([`Session::start_recording`]): top-level
     /// commands with the place they ran in, kept apart from the journal.
+    #[cfg(feature = "editing")]
     pub recorder: Option<record::Recorder>,
     /// How many `execute` calls are running (0 between top-level commands).
     depth: u32,
     /// The steps the last successful `automate.runScript` or `macro.run` ran while a recorder was
     /// on, for the recorder to keep with that step (see [`record::Recorder::ran`]); taken by the
     /// recording hook.
+    #[cfg(feature = "editing")]
     pub(crate) script_ran: Option<Vec<(String, Json)>>,
     /// Macros the person allowed to run in this session: (document uid, the macro's content as
     /// canonical JSON, from [`macros::fingerprint`]).
+    #[cfg(feature = "editing")]
     pub macro_approvals: std::collections::HashSet<(u64, String)>,
     /// The macro being debugged, between debugger actions.
+    #[cfg(feature = "editing")]
     pub macro_debug: Option<macros::debug::Debugger>,
     /// Where the macro recorder started (beside `recorder`, its buffer).
+    #[cfg(feature = "editing")]
     pub macro_recording: Option<macros::recorder::RecordingStart>,
     /// Draw tab tool: "" (select), "pen" or "eraser"; pen colour and width.
     pub draw_tool: String,
@@ -569,9 +598,73 @@ pub struct Session {
     pub text_width: Option<TextWidth>,
 }
 
+/// Commands that keep a read-only host useful without changing workbook content.
+///
+/// This is intentionally an allowlist. New engine commands remain blocked in a read-only
+/// session until their behavior has been reviewed and explicitly added here.
+fn read_only_command(id: &str) -> bool {
+    matches!(
+        id,
+        "file.open"
+            | "selection.set"
+            | "selection.move"
+            | "selection.next"
+            | "selection.currentRegion"
+            | "selection.row"
+            | "selection.column"
+            | "edit.selectAll"
+            | "edit.goTo"
+            | "edit.goToSpecial"
+            | "edit.copy"
+            | "edit.clearClipboard"
+            | "edit.find"
+            | "sheet.activate"
+            | "sheet.next"
+            | "sheet.previous"
+            | "view.normal"
+            | "view.pageBreakPreview"
+            | "view.pageLayout"
+            | "view.ruler"
+            | "view.split"
+            | "view.gridlines"
+            | "view.headings"
+            | "view.rightToLeft"
+            | "view.showZeros"
+            | "view.showOutlineSymbols"
+            | "view.showObjects"
+            | "view.freezePanes"
+            | "view.freezeTopRow"
+            | "view.freezeFirstColumn"
+            | "view.unfreezePanes"
+            | "view.zoom"
+            | "view.zoom100"
+            | "view.zoomToSelection"
+            | "view.formulaBar"
+            | "view.statusBar"
+            | "search.find"
+            | "search.findNext"
+            | "search.findPrevious"
+            | "document.inspect"
+            | "sheet.read"
+            | "cell.get"
+            | "selection.stats"
+            | "app.commands"
+    )
+}
+
 impl Session {
     pub fn new() -> Session {
         Session::default()
+    }
+
+    /// Enables or disables the session-wide read-only command policy.
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+    }
+
+    /// Whether this session refuses workbook-editing commands.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
     pub fn documents(&self) -> &[DocState] {
         &self.docs
@@ -631,6 +724,7 @@ impl Session {
             let d = self.docs.remove(i);
             self.groups.retain(|g| g.doc != d.uid);
             // A macro being debugged in this workbook ends with it; its group just went.
+            #[cfg(feature = "editing")]
             if self.macro_debug.as_ref().is_some_and(|m| m.doc == d.uid) {
                 self.macro_debug = None;
             }
@@ -691,6 +785,7 @@ impl Session {
     }
 
     /// Cuts the journal back to its first `keep` entries, with its size bookkeeping.
+    #[cfg(feature = "editing")]
     pub(crate) fn truncate_journal(&mut self, keep: usize) {
         if self.journal_sizes.len() == self.journal.len() {
             self.journal_sizes.truncate(keep);
@@ -709,11 +804,15 @@ impl Session {
     /// Panics inside commands are caught and reported; the workbook is restored.
     pub fn execute(&mut self, id: &str, params: Json) -> Result<Json> {
         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+        if self.read_only && !read_only_command(id) {
+            return Err(EngineError::Disabled(id.to_string(), "the workbook is read-only".into()));
+        }
         if let Err(why) = (spec.enabled)(self) {
             return Err(EngineError::Disabled(id.to_string(), why));
         }
         // A debugger whose undo group something else ended locks nothing any more (`macro.debug`
         // itself says that the run had ended).
+        #[cfg(feature = "editing")]
         if id != "macro.debug" {
             macros::debug::drop_if_ended(self);
         }
@@ -723,9 +822,12 @@ impl Session {
         // (`macros::debug::LOOKS_AROUND`). Anything else waits, undoable or not (saving, view
         // modes, stopping Record Actions, which saves a script), also when another command runs
         // it. Only the run's own steps go ahead. Other workbooks stay editable.
-        let locked = self.active().is_some_and(|d| self.macro_debug.as_ref().is_some_and(|m| m.locks(d.uid) && !m.stepping()));
-        if locked && !macros::debug::runs_while_locked(id, query) {
-            return Err(EngineError::Disabled(id.to_string(), macros::debug::BUSY.into()));
+        #[cfg(feature = "editing")]
+        {
+            let locked = self.active().is_some_and(|d| self.macro_debug.as_ref().is_some_and(|m| m.locks(d.uid) && !m.stepping()));
+            if locked && !macros::debug::runs_while_locked(id, query) {
+                return Err(EngineError::Disabled(id.to_string(), macros::debug::BUSY.into()));
+            }
         }
         let before = self.active().map(|d| (d.uid, d.wb.clone(), d.selection.clone()));
         // A dry run inside this command that a panic cuts short leaves journaling paused and its
@@ -753,11 +855,13 @@ impl Session {
             None => Vec::new(),
         };
         // The recorder keeps top-level calls with the place they ran in.
+        #[cfg(feature = "editing")]
         let place = (self.depth == 0 && self.recorder.is_some()).then(|| match self.active() {
             Some(d) => (d.uid, d.wb.active_sheet(), d.wb.active().map(|sh| sh.name.clone()).unwrap_or_default(), d.selection.clone()),
             None => (0, 0, String::new(), Selection::default()),
         });
         let doc_uid = before.as_ref().map(|(uid, ..)| *uid);
+        #[cfg(feature = "editing")]
         let requests_before = self.ui_requests.len();
         let marked = doc_uid.zip(start).map(|(uid, (_, len))| (uid, len));
         self.marks.extend(marked);
@@ -809,6 +913,7 @@ impl Session {
                 if self.depth == 0 {
                     // Only the `macro.debug` call itself can lose the run's place: a command nested
                     // in a step that panics is an error of that step, which the run handles.
+                    #[cfg(feature = "editing")]
                     macros::debug::recover(self);
                     self.trim_history();
                     self.group_step = None;
@@ -830,29 +935,33 @@ impl Session {
             // A call that opened a dialog and changed the workbook too (a script with an edit before
             // a menu-style step) is recorded: the edit happened, and the dialog's confirming call
             // is a step of its own.
-            let opened_dialog = self.ui_requests.get(requests_before..).is_some_and(|new| new.iter().any(|q| matches!(q, UiRequest::Dialog(..))));
-            let changed = before.as_ref().is_some_and(|(uid, wb, _)| self.docs.iter().any(|d| d.uid == *uid && !Arc::ptr_eq(&d.wb, wb)));
-            if let Some((doc, sheet, sheet_name, selection)) = place.filter(|_| (!opened_dialog || changed) && !record::NOT_RECORDED.contains(&id))
-                && let Some(rec) = self.recorder.as_mut()
+            #[cfg(feature = "editing")]
             {
-                // A toggle (Bold) is recorded with the state it set, as Excel records
-                // `Bold = True`: playing it back sets that state rather than flipping it again.
-                let params = match &result {
-                    Ok(r) if params.is_object() => record::with_toggle_state(id, cmd::journal_params(&params), r),
-                    _ => cmd::journal_params(&params),
-                };
-                let kept = rec.push(record::RecordedStep { doc, sheet, sheet_name, selection, id: id.to_string(), params });
-                // A script or macro run is kept with the steps it ran, so editing or deleting the
-                // script or macro before the recording stops does not change what was recorded.
-                if let Some(ran) = self.script_ran.take()
-                    && kept
-                    && matches!(id, "automate.runScript" | "macro.run")
+                let opened_dialog = self.ui_requests.get(requests_before..).is_some_and(|new| new.iter().any(|q| matches!(q, UiRequest::Dialog(..))));
+                let changed = before.as_ref().is_some_and(|(uid, wb, _)| self.docs.iter().any(|d| d.uid == *uid && !Arc::ptr_eq(&d.wb, wb)));
+                if let Some((doc, sheet, sheet_name, selection)) = place.filter(|_| (!opened_dialog || changed) && !record::NOT_RECORDED.contains(&id))
+                    && let Some(rec) = self.recorder.as_mut()
                 {
-                    rec.attach_ran(ran);
+                    // A toggle (Bold) is recorded with the state it set, as Excel records
+                    // `Bold = True`: playing it back sets that state rather than flipping it again.
+                    let params = match &result {
+                        Ok(r) if params.is_object() => record::with_toggle_state(id, cmd::journal_params(&params), r),
+                        _ => cmd::journal_params(&params),
+                    };
+                    let kept = rec.push(record::RecordedStep { doc, sheet, sheet_name, selection, id: id.to_string(), params });
+                    // A script or macro run is kept with the steps it ran, so editing or deleting the
+                    // script or macro before the recording stops does not change what was recorded.
+                    if let Some(ran) = self.script_ran.take()
+                        && kept
+                        && matches!(id, "automate.runScript" | "macro.run")
+                    {
+                        rec.attach_ran(ran);
+                    }
                 }
             }
             if self.journal_paused == 0 {
                 self.push_journal(id, cmd::journal_params(&params));
+                #[cfg(feature = "editing")]
                 recent::note(&mut self.prefs.recent_functions, id, &params);
             }
         }
@@ -969,6 +1078,7 @@ impl Session {
             wb: d.wb.clone(),
             selection: d.selection.clone(),
             redo: d.redo.clone(),
+            #[cfg(feature = "editing")]
             recorded: self.recorder.as_ref().map(record::Recorder::mark),
         };
         let token = GroupToken { id: g.id, doc: g.doc };
@@ -1068,6 +1178,7 @@ impl Session {
         d.revision += 1;
         // The steps recorded while the group was open go with their edits (all of them when the
         // recording started inside the group).
+        #[cfg(feature = "editing")]
         if let Some(rec) = self.recorder.as_mut() {
             rec.cut_back(g.recorded.unwrap_or((0, 0)), g.doc);
         }
@@ -1082,16 +1193,19 @@ impl Session {
 
     /// Starts recording top-level commands into an empty buffer, replacing any recording in
     /// progress. Queries, failed commands and commands run by other commands are not recorded.
+    #[cfg(feature = "editing")]
     pub fn start_recording(&mut self) {
         self.recorder = Some(record::Recorder::default());
     }
 
     /// Stops recording and returns what was recorded (`None` when nothing was recording).
+    #[cfg(feature = "editing")]
     pub fn stop_recording(&mut self) -> Option<record::Recorder> {
         self.recorder.take()
     }
 
     /// Whether the recording buffer is collecting commands.
+    #[cfg(feature = "editing")]
     pub fn is_recording(&self) -> bool {
         self.recorder.is_some()
     }

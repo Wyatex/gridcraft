@@ -3,8 +3,11 @@
 
 use std::fmt::Write as _;
 
-use gridcraft_model::{Anchor, Color, Shape, ShapeKind, Theme};
+#[cfg(feature = "write")]
+use gridcraft_model::Theme;
+use gridcraft_model::{Anchor, Color, Shape, ShapeKind};
 
+#[cfg(feature = "write")]
 use super::xfrm;
 use crate::tables::EMU_PER_PX;
 use crate::xml::El;
@@ -194,6 +197,7 @@ pub(super) fn read(obj: &El, anchor: Anchor) -> Option<Shape> {
 
 /// Invalid/native out-of-range data uses the existing rectangle fallback. A successful
 /// result is complete before it is appended, so malformed points never yield half a stroke.
+#[cfg(feature = "write")]
 pub(super) fn write(shape: &Shape, theme: &Theme, id: usize) -> Option<String> {
     if shape.kind != ShapeKind::Ink || shape.format.no_line {
         return None;

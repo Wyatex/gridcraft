@@ -8,9 +8,13 @@ description = "GridCraft charts: data resolution, layout into toolkit-free primi
 [lints]
 workspace = true
 
+[features]
+default = ["eval"]
+eval = ["gridcraft-calc/eval"]
+
 [dependencies]
 gridcraft-core = { workspace = true }
-gridcraft-model = { workspace = true }
-gridcraft-calc = { workspace = true }
+gridcraft-model = { path = "../model", default-features = false }
+gridcraft-calc = { path = "../calc", default-features = false }
 gridcraft-numfmt = { workspace = true }
 serde = { workspace = true }

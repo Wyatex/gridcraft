@@ -3,11 +3,14 @@
 //! In the file the colour scheme is ordered dk1, lt1, dk2, lt2, accent1–6, hlink, folHlink,
 //! while cell colour `theme` indices (and the model's `Theme.colors`) use lt1, dk1, lt2, dk2, ….
 
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
 use gridcraft_model::Theme;
 
-use crate::xml::{El, esc_attr};
+use crate::xml::El;
+#[cfg(feature = "write")]
+use crate::xml::esc_attr;
 
 const MAX_SCRIPT_FONTS: usize = 64;
 const MAX_SCRIPT_FONT_CHARS: usize = 256;
@@ -97,11 +100,13 @@ fn script_fonts(collection: &El) -> Vec<(String, String)> {
     collection.kids("font").take(MAX_SCRIPT_FONTS).map(|e| (capped(e.attr("script")), capped(e.attr("typeface")))).collect()
 }
 
+#[cfg(feature = "write")]
 fn script_fonts_xml(fonts: &[(String, String)]) -> String {
     fonts.iter().map(|(script, face)| format!("<a:font script=\"{}\" typeface=\"{}\"/>", esc_attr(script), esc_attr(face))).collect()
 }
 
 /// A minimal, schema-complete theme part for `t`.
+#[cfg(feature = "write")]
 pub fn write_theme(t: &Theme) -> String {
     let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
     let name = if t.name.is_empty() { "Craft" } else { &t.name };

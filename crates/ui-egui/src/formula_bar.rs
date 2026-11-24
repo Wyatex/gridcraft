@@ -1,11 +1,15 @@
 //! The formula bar (Name Box, ✕ ✓ fx, the PY badge, formula field) and the shared cell editor
 //! widget. In Python mode the field is the code editor.
 
-use egui::{FontId, Key, Rect, Sense, Stroke, StrokeKind, TextEdit, pos2, vec2};
+#[cfg(feature = "full")]
+use egui::FontId;
+use egui::{Key, Rect, Sense, Stroke, StrokeKind, TextEdit, pos2, vec2};
 use serde_json::json;
 
 use crate::SheetApp;
+#[cfg(feature = "full")]
 use crate::code_editor::{self, FieldOptions, Lang};
+#[cfg(feature = "full")]
 use crate::editor::formula_refs;
 use crate::icons::{self, Icon};
 use crate::theme::{self, Tokens};
@@ -109,12 +113,17 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 layout.name_box = name_box(app, ui, &t);
                 ui.add_space(4.0);
+                #[cfg(feature = "full")]
                 let editing = app.editor.is_some();
+                #[cfg(not(feature = "full"))]
+                let editing = false;
                 let c = if editing { t.text } else { t.text_disabled };
                 let cancel = crate::widgets::icon_button(ui, Icon::Close, c, "Cancel", vec2(22.0, 24.0));
+                #[cfg(feature = "full")]
                 if cancel.clicked() && editing {
                     app.cancel_edit();
                 }
+                #[cfg(feature = "full")]
                 if crate::widgets::icon_button(ui, Icon::Check, c, "Enter", vec2(22.0, 24.0)).clicked() && editing {
                     // The Enter button is Enter: it takes the searched list's highlighted entry.
                     if let Some(ed) = app.editor.as_mut() {
@@ -122,11 +131,15 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                     }
                     app.commit_edit(0, 0, false, false);
                 }
-                let fx = crate::widgets::icon_button(ui, Icon::Fx, t.text, "Insert Function", vec2(26.0, 24.0));
+                #[cfg(not(feature = "full"))]
+                let _ = crate::widgets::icon_button(ui, Icon::Check, c, "Enter", vec2(22.0, 24.0));
+                let fx = crate::widgets::icon_button(ui, Icon::Fx, if editing { t.text } else { t.text_disabled }, "Insert Function", vec2(26.0, 24.0));
+                #[cfg(feature = "full")]
                 if fx.clicked() {
                     app.open_dialog("insertFunction", json!({}));
                 }
                 layout.buttons = cancel.rect.union(fx.rect);
+                #[cfg(feature = "full")]
                 if let Some(badge) = python_badge(app, ui, &t) {
                     layout.buttons = layout.buttons.union(badge);
                 }
@@ -140,7 +153,9 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
                 let id = egui::Id::unique("gridcraft.formula_bar");
                 // A spill child shows its anchor's formula muted and read-only.
-                let read_only = active_spill_anchor(app).is_some();
+                #[cfg(feature = "full")]
+                let read_only = app.read_only || active_spill_anchor(app).is_some();
+                #[cfg(feature = "full")]
                 let info = if app.editor.is_some() {
                     editor_widget(app, &mut child, id, font.clone(), true, inner.width(), inner.height())
                 } else {
@@ -173,6 +188,26 @@ pub fn show(app: &mut SheetApp, ui: &mut egui::Ui) {
                     if !read_only && ui.interact(field, id.with("click"), Sense::click()).clicked() {
                         app.begin_edit(None, true);
                     }
+                    EditorInfo { lines, caret: None }
+                };
+                #[cfg(not(feature = "full"))]
+                let info = {
+                    let text = active_input(app);
+                    let color = if active_spill_anchor(app).is_some() { t.text_disabled } else { t.text };
+                    let order = app.session.active().and_then(|doc| cell_reading_order(app, doc.wb.active_sheet(), doc.selection.active));
+                    let direction = crate::text_direction::cell_direction(order, &text);
+                    let galley = child.painter().layout_job(egui::text::LayoutJob {
+                        direction,
+                        ..egui::text::LayoutJob::simple(text, font.clone(), color, inner.width())
+                    });
+                    let lines = galley.rows.len();
+                    let shown = app.session.active().map(|d| (d.uid, d.wb.active_sheet(), d.selection.active.row, d.selection.active.col));
+                    egui::ScrollArea::vertical().id_salt(id.with(("view", shown))).max_height(inner.height()).auto_shrink([false, true]).show(
+                        &mut child,
+                        |ui| {
+                            ui.add(egui::Label::new(galley));
+                        },
+                    );
                     EditorInfo { lines, caret: None }
                 };
                 layout.field = field;
@@ -321,11 +356,13 @@ fn active_input(app: &SheetApp) -> String {
 }
 
 /// Ctrl+Alt+Shift+P, and Cmd+Option+Shift+P on macOS: Python mode on or off.
+#[cfg(feature = "full")]
 pub fn is_python_shortcut(ev: &egui::Event) -> bool {
     matches!(ev, egui::Event::Key { key: Key::P, pressed: true, modifiers: m, .. } if m.shift && m.alt && (m.ctrl || m.command || m.mac_cmd))
 }
 
 /// Takes Ctrl+Alt+Shift+P out of this pass's input; whether it was there.
+#[cfg(feature = "full")]
 fn take_python_shortcut(i: &mut egui::InputState) -> bool {
     let found = i.events.iter().any(is_python_shortcut);
     if found {
@@ -335,6 +372,7 @@ fn take_python_shortcut(i: &mut egui::InputState) -> bool {
 }
 
 /// What a key in Python mode does, besides editing the code.
+#[cfg(feature = "full")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PythonKey {
     /// Ctrl+Enter (Cmd+Enter on macOS): put the code in the cell.
@@ -345,6 +383,7 @@ enum PythonKey {
     Leave,
 }
 
+#[cfg(feature = "full")]
 fn python_key(ev: &egui::Event) -> Option<PythonKey> {
     match ev {
         egui::Event::Key { key: Key::Enter, pressed: true, modifiers: m, .. } if (m.ctrl || m.command || m.mac_cmd) && !m.alt => {
@@ -358,6 +397,7 @@ fn python_key(ev: &egui::Event) -> Option<PythonKey> {
 
 /// The PY badge beside fx: shown in Python mode and on a selected Python cell. Clicking it
 /// switches Python mode, as Ctrl+Alt+Shift+P does. Returns its rect when shown.
+#[cfg(feature = "full")]
 fn python_badge(app: &mut SheetApp, ui: &mut egui::Ui, t: &Tokens) -> Option<Rect> {
     let show = match &app.editor {
         Some(ed) => ed.python,
@@ -447,6 +487,13 @@ fn name_box(app: &mut SheetApp, ui: &mut egui::Ui, t: &Tokens) -> Rect {
 }
 
 /// Backspace and Delete take back the AutoComplete proposal (Excel's selected rest), not a typed character.
+#[cfg(feature = "full")]
+mod full_editor {
+    use super::{
+        EditorInfo, FieldOptions, FontId, Key, Lang, PythonKey, SheetApp, TextEdit, Tokens, cell_reading_order, code_editor, formula_refs, json,
+        python_key, take_python_shortcut, theme, vec2,
+    };
+
 fn dismiss_completion(i: &mut egui::InputState, completion: &mut Option<String>) {
     if completion.is_some() && (i.consume_key(egui::Modifiers::NONE, Key::Backspace) || i.consume_key(egui::Modifiers::NONE, Key::Delete)) {
         *completion = None;
@@ -956,6 +1003,7 @@ pub fn function_description(name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod spill_tests {
+    use super::super::{active_input, active_spill_anchor, show};
     use super::*;
     use gridcraft_engine::Session;
 
@@ -1131,6 +1179,7 @@ mod spill_tests {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{MAX_LINES, one_line};
     use super::*;
 
     fn press(key: Key) -> egui::RawInput {
@@ -1272,3 +1321,7 @@ fn show_editor_suggestions(ui: &mut egui::Ui, suggestion: EditorSuggestion<'_>) 
         });
     }
 }
+}
+
+#[cfg(feature = "full")]
+pub use full_editor::{editor_widget, function_description, function_signature};

@@ -131,10 +131,12 @@ fn prefix(part: &str, e: IoError) -> IoError {
 // ---------------------------------------------------------------- writing
 
 /// A zip package being written: every entry deflated, with one fixed timestamp.
+#[cfg(feature = "write")]
 pub struct ZipOut {
     zip: craft_opc::ZipOut,
 }
 
+#[cfg(feature = "write")]
 impl ZipOut {
     pub fn new() -> ZipOut {
         ZipOut { zip: craft_opc::ZipOut::new() }

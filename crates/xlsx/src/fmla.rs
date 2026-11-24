@@ -2,9 +2,11 @@
 //! prefixes for newer functions).
 
 use gridcraft_formula::Expr;
+#[cfg(feature = "write")]
 use gridcraft_model::Formula;
 
 /// Formula text for a file.
+#[cfg(feature = "write")]
 pub fn to_file(f: &Formula) -> String {
     match f.expr_arc() {
         // Most formulas have nothing the file spells differently: print them without copying.
@@ -16,6 +18,7 @@ pub fn to_file(f: &Formula) -> String {
 
 /// Whether [`expr_to_file`] would change anything in `e`: a LET or LAMBDA (parameter prefixes),
 /// a function with a file prefix, a spill, `@` or trim operator, or a structured reference.
+#[cfg(feature = "write")]
 fn needs_file_spelling(e: &Expr) -> bool {
     let mut found = false;
     e.walk(&mut |x| {
@@ -30,6 +33,7 @@ fn needs_file_spelling(e: &Expr) -> bool {
 }
 
 /// Arbitrary formula text (names, CF, validation) for a file. Unparseable text is kept.
+#[cfg(feature = "write")]
 pub fn text_to_file(text: &str) -> String {
     let body = text.strip_prefix('=').unwrap_or(text);
     match gridcraft_formula::parse(body) {
@@ -41,6 +45,7 @@ pub fn text_to_file(text: &str) -> String {
 const PARAM_PREFIX: &str = "_xlpm.";
 
 /// Adds Excel's `_xlpm.` prefix to LET/LAMBDA parameter names, at the declaration and at every use in scope.
+#[cfg(feature = "write")]
 fn prefix_params(e: Expr, scope: &[String]) -> Expr {
     let sub = |x: Box<Expr>, sc: &[String]| Box::new(prefix_params(*x, sc));
     match e {
@@ -101,6 +106,7 @@ fn prefix_params(e: Expr, scope: &[String]) -> Expr {
     }
 }
 
+#[cfg(feature = "write")]
 fn expr_to_file(e: Expr) -> String {
     let e = prefix_params(e, &[]);
     let e = e.map(&mut |x| match x {
@@ -139,6 +145,7 @@ fn expr_to_file(e: Expr) -> String {
 
 /// The operands whose parentheses the reader adds back to `_xlfn.SINGLE(x)` (see the formula
 /// parser): a binary operation other than a union, and a prefix or postfix operator.
+#[cfg(feature = "write")]
 fn rewrapped_by_single(e: &Expr) -> bool {
     use gridcraft_formula::{BinOp, UnOp};
     matches!(e, Expr::Binary(op, ..) if *op != BinOp::Union) || matches!(e, Expr::Unary(UnOp::Neg | UnOp::Plus | UnOp::Percent, _))

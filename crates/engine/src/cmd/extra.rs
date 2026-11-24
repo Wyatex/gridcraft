@@ -1,37 +1,94 @@
 //! More ribbon commands: Chart Design and Format, object arrangement, workbook views, table
 //! tools, Get Data, scripts (Automate), cell checkboxes, theme colours and fonts.
 
+#[cfg(feature = "editing")]
 use gridcraft_core::{CellRef, RangeRef, Value};
+#[cfg(feature = "editing")]
 use gridcraft_model::{
     Anchor, Chart, Color, DefinedName, HAlign, LegendPos, NumFmt, Shape, ShapeKind, Sheet, SheetViewMode, TableColumn, TotalsFn, Trendline,
     TrendlineKind, Workbook,
 };
+#[cfg(not(feature = "editing"))]
+use gridcraft_model::SheetViewMode;
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, EngineError, Result, Session, always, anchor_mode_name, bad, bool_param, cell_param, cell_param_on, cmd, edit, f64_param, has_doc,
     ok, split_sheet, str_param, target_range, target_ranges, target_sheet, u32_param,
 };
+#[cfg(not(feature = "editing"))]
+use super::{CommandSpec, Result, Session, bool_param, cmd, has_doc, target_sheet};
 
+#[cfg(feature = "editing")]
 mod cells;
+#[cfg(feature = "editing")]
 mod chart;
+#[cfg(feature = "editing")]
 mod data;
+#[cfg(feature = "editing")]
 mod objects;
+#[cfg(feature = "editing")]
 mod scripts;
 mod window;
 
+#[cfg(feature = "editing")]
 pub(crate) use cells::is_checkbox_cell;
+#[cfg(feature = "editing")]
 use cells::{background, checkbox, draw_border, new_cell_style, recently_used, theme_colors, theme_fonts, toggle_checkbox, use_in_formula};
+#[cfg(feature = "editing")]
 use chart::{add_element, change_colors, format_series, move_chart, quick_layout, select_data, set_values_range};
+#[cfg(feature = "editing")]
 use data::{from_csv, from_table_range, queries, table_resize};
+#[cfg(feature = "editing")]
 use objects::{align, arrange, rotate, selection_pane, shape_fill, shape_outline};
+#[cfg(feature = "editing")]
 pub(crate) use scripts::has_scripts;
+#[cfg(feature = "editing")]
 use scripts::{all_scripts, delete_script, new_script, record, run_script, stop_action, trust_scripts};
-use window::{arrange_all, custom_views, hide_window, new_window, ruler, set_view, split, switch_windows, unhide_window, watch_window};
+use window::{ruler, set_view, split};
+#[cfg(feature = "editing")]
+use window::{arrange_all, custom_views, hide_window, new_window, switch_windows, unhide_window, watch_window};
+#[cfg(feature = "editing")]
 pub(crate) use window::{keep_view_modes, keep_watch_list, window_param};
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
+    let v = vec![
+        // Views
+        cmd!(noundo "view.normal", "Normal", ["View", "Workbook Views"], None, "{sheet?} → {view} (per sheet, saved with the file)", has_doc, |s, p| set_view(
+            s,
+            p,
+            SheetViewMode::Normal
+        )),
+        cmd!(
+            noundo "view.pageLayout",
+            "Page Layout",
+            ["View", "Workbook Views"],
+            None,
+            "{sheet?} → {view}: pages on paper with rulers; headers and footers are edited in place (per sheet, saved with the file)",
+            has_doc,
+            |s, p| set_view(s, p, SheetViewMode::PageLayout)
+        ),
+        cmd!(
+            noundo "view.pageBreakPreview",
+            "Page Break Preview",
+            ["View", "Workbook Views"],
+            None,
+            "{sheet?} → {view} (per sheet, saved with the file)",
+            has_doc,
+            |s, p| set_view(s, p, SheetViewMode::PageBreakPreview)
+        ),
+        cmd!(noundo "view.split", "Split", ["View", "Window"], None, "{} (toggles a split at the active cell; shown as frozen panes in this version)", has_doc, split),
+        cmd!(noundo "view.ruler", "Ruler", ["View", "Show"], None, "{on?} → {on}: rulers in Page Layout view (an application option)", has_doc, ruler),
+    ];
+    #[cfg(not(feature = "editing"))]
+    {
+        v
+    }
+    #[cfg(feature = "editing")]
+    {
+        let mut v = v;
+        v.extend([
         // Chart Design / Format
         cmd!(
             "chart.addElement",
@@ -148,32 +205,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             rotate
         ),
-        // Views
-        cmd!(noundo "view.normal", "Normal", ["View", "Workbook Views"], None, "{sheet?} → {view} (per sheet, saved with the file)", has_doc, |s, p| set_view(
-            s,
-            p,
-            SheetViewMode::Normal
-        )),
-        cmd!(
-            noundo "view.pageLayout",
-            "Page Layout",
-            ["View", "Workbook Views"],
-            None,
-            "{sheet?} → {view}: pages on paper with rulers; headers and footers are edited in place (per sheet, saved with the file)",
-            has_doc,
-            |s, p| set_view(s, p, SheetViewMode::PageLayout)
-        ),
-        cmd!(
-            noundo "view.pageBreakPreview",
-            "Page Break Preview",
-            ["View", "Workbook Views"],
-            None,
-            "{sheet?} → {view} (per sheet, saved with the file)",
-            has_doc,
-            |s, p| set_view(s, p, SheetViewMode::PageBreakPreview)
-        ),
         cmd!(noundo "view.customViews", "Custom Views…", ["View", "Workbook Views"], None, "{save?: name, show?: name, delete?: name} → list", has_doc, custom_views),
-        cmd!(noundo "view.split", "Split", ["View", "Window"], None, "{} (toggles a split at the active cell; shown as frozen panes in this version)", has_doc, split),
         cmd!(noundo "view.newWindow", "New Window", ["View", "Window"], None, "{} → {window, doc, title}: opens another window on the active workbook (the same workbook: saving from either window saves it)", has_doc, new_window),
         cmd!(
             noundo "view.arrangeAll",
@@ -195,7 +227,6 @@ pub fn specs() -> Vec<CommandSpec> {
             always,
             switch_windows
         ),
-        cmd!(noundo "view.ruler", "Ruler", ["View", "Show"], None, "{on?} → {on}: rulers in Page Layout view (an application option)", has_doc, ruler),
         cmd!(query "view.macros", "Macros", ["View", "Macros"], None, "{} → scripts", has_doc, all_scripts),
         // Table tools
         cmd!("table.resize", "Resize Table", ["Table Design", "Properties"], None, "{table?, range: \"A1:F20\"}", has_doc, table_resize),
@@ -338,14 +369,20 @@ pub fn specs() -> Vec<CommandSpec> {
             use_in_formula
         ),
         cmd!(query "formulas.watchWindow", "Watch Window", ["Formulas", "Formula Auditing"], None, "{add?: \"Sheet1!B5\", remove?: \"…\"} → watched cells with current values", has_doc, watch_window),
-    ]
+        ]);
+        v
+    }
 }
 
+#[cfg(feature = "editing")]
 const VIEWS_NAME: &str = "_sc_custom_views";
+#[cfg(feature = "editing")]
 const SCRIPTS_NAME: &str = "_sc_scripts";
+#[cfg(feature = "editing")]
 const WATCH_NAME: &str = "_sc_watch";
 
 /// Workbook-level JSON stored in a hidden defined name (round-trips through XLSX).
+#[cfg(feature = "editing")]
 fn stash_get(wb: &Workbook, key: &str) -> Json {
     wb.names
         .iter()
@@ -356,11 +393,13 @@ fn stash_get(wb: &Workbook, key: &str) -> Json {
 }
 
 /// Like `stash_get`, for the name-keyed lists (views, scripts): a stored value that is not a JSON object is treated as empty.
+#[cfg(feature = "editing")]
 fn stash_map(wb: &Workbook, key: &str) -> Json {
     let v = stash_get(wb, key);
     if v.is_object() { v } else { json!({}) }
 }
 
+#[cfg(feature = "editing")]
 fn stash_set(wb: &mut Workbook, key: &str, v: &Json) {
     let text = v.to_string();
     let formula = format!("\"{}\"", text.replace('"', "\"\""));
@@ -369,9 +408,11 @@ fn stash_set(wb: &mut Workbook, key: &str, v: &Json) {
 }
 
 /// Number format that marks checkbox cells (TRUE/FALSE values drawn as boxes).
+#[cfg(feature = "editing")]
 pub const CHECKBOX_FORMAT: &str = "\"☐\";\"☐\";\"☐\";[=1]\"☑\"";
 
 /// Copy of the params that is always a JSON object, so keys can be assigned; any other JSON value counts as no params (like null).
+#[cfg(feature = "editing")]
 fn object_params(p: &Json) -> Json {
     Json::Object(p.as_object().cloned().unwrap_or_default())
 }

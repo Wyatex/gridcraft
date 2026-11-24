@@ -12,6 +12,7 @@ use gridcraft_engine::model::{BorderLine, BorderStyle, Color, HAlign, LineIndex,
 use serde_json::json;
 
 use crate::SheetApp;
+#[cfg(feature = "full")]
 use crate::editor::EditState;
 use crate::theme::{self, Tokens};
 
@@ -26,6 +27,7 @@ mod active_row;
 pub use active_row::active_row_band;
 mod cell_paint;
 mod cursor;
+#[cfg(feature = "full")]
 pub(crate) mod editor;
 mod geo;
 mod interact;
@@ -36,18 +38,24 @@ mod selection;
 mod show;
 mod tables;
 
+#[cfg(feature = "full")]
 pub(crate) use cell_paint::paint_border;
 #[cfg(test)]
 pub(crate) use cell_paint::{cell_text_y, rotated_text_pos, wrapped_cell_text_y};
 #[cfg(test)]
 use cell_paint::{center_across_end, display_text, look, numfmt_color, painted_halign};
+#[cfg(feature = "full")]
 pub use editor::validation_arrow;
-#[cfg(test)]
+#[cfg(all(test, feature = "full"))]
 use editor::{editor_slack, editor_width, list_picker_height};
 pub use geo::Geo;
-pub use interact::{follow_link, freeze_handles, point_move};
+#[cfg(feature = "full")]
+pub use interact::point_move;
+pub use interact::{follow_link, freeze_handles};
+#[cfg(feature = "full")]
 pub(crate) use quadrant::{QuadrantPaint, paint_quadrant};
 pub use selection::selection_fill;
+#[cfg(feature = "full")]
 pub(crate) use selection::{SelectionPaintInput, paint_selection};
 pub(crate) use show::horizontal_scrollbar;
 pub use show::show;
@@ -253,6 +261,7 @@ impl Trace {
 
 /// The entries of an open list-validation dropdown, read within the list search budget
 /// ([`gridcraft_engine::cmd::data::LIST_SOURCE_BUDGET`]).
+#[cfg(feature = "full")]
 pub struct ListPickerItems {
     /// The workbook version they were read from: any edit makes a new one.
     pub(crate) wb: std::sync::Arc<Workbook>,
@@ -316,6 +325,7 @@ pub struct GridState {
     pub list_picker: Option<CellRef>,
     /// The open dropdown's entries, read once for the workbook, sheet and cell they came from, so
     /// an open list doesn't read its source again every frame.
+    #[cfg(feature = "full")]
     pub list_picker_items: Option<ListPickerItems>,
     /// Open task pane: comments, watch, selection, formatChart.
     pub pane: Option<String>,
@@ -333,10 +343,13 @@ pub struct GridState {
     pub show_details_cells: Option<DetailsCache>,
     pub header_menu: Option<(Pos2, bool)>,
     /// Page Layout view pagination, cached per (doc uid, revision, sheet, rows, columns).
+    #[cfg(feature = "full")]
     pub paper: Option<crate::paper_view::PaperCache>,
     /// Header or footer being edited in place (Page Layout view).
+    #[cfg(feature = "full")]
     pub hf_edit: Option<crate::paper_view::HfEdit>,
     /// A page margin being dragged on a ruler (Page Layout view); committed on release.
+    #[cfg(feature = "full")]
     pub ruler_drag: Option<crate::paper_view::RulerDrag>,
     /// Insert › Header & Footer: start editing the first page's header once Page Layout view is up.
     pub hf_start: bool,
@@ -362,6 +375,7 @@ pub struct GridState {
     /// A one-finger touch drag in progress: it pans the sheet instead of selecting.
     pub touch_pan: bool,
     /// What the macro step editor shows on the grid (Check, debugging).
+    #[cfg(feature = "full")]
     pub macro_overlay: Option<crate::macro_editor::MacroOverlay>,
 }
 

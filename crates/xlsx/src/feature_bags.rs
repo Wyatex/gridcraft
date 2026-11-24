@@ -13,12 +13,16 @@
 use crate::xml::El;
 
 /// Namespace of the part and of the `xfComplement` element.
+#[cfg(feature = "write")]
 pub const NS: &str = "http://schemas.microsoft.com/office/spreadsheetml/2022/featurepropertybag";
 /// Relationship type from the workbook part.
+#[cfg(feature = "write")]
 pub const REL: &str = "http://schemas.microsoft.com/office/2022/11/relationships/FeaturePropertyBag";
 /// Content type of the part.
+#[cfg(feature = "write")]
 pub const CONTENT_TYPE: &str = "application/vnd.ms-excel.featurepropertybag+xml";
 /// Part name we write.
+#[cfg(feature = "write")]
 pub const PART: &str = "xl/featurePropertyBag/featurePropertyBag.xml";
 /// `ext` URI of the `xfComplement` extension on an `xf`.
 pub const XF_EXT_URI: &str = "{C7286773-470A-42A8-94C5-96B5CB345126}";
@@ -29,6 +33,7 @@ pub const XF_EXT_URI: &str = "{C7286773-470A-42A8-94C5-96B5CB345126}";
 /// the one `xfComplement` indexes into, and Excel finds it by its `extRef`: without
 /// `extRef="XFComplementsMapperExtRef"` it repairs the workbook ("Format from /xl/styles.xml")
 /// and drops every checkbox (#2630).
+#[cfg(feature = "write")]
 pub fn checkbox_part() -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<FeaturePropertyBags xmlns=\"{NS}\" count=\"4\"><bag type=\"Checkbox\"/><bag type=\"XFControls\"><bagId k=\"CellControl\">0</bagId></bag><bag type=\"XFComplement\"><bagId k=\"XFControls\">1</bagId></bag><bag type=\"XFComplements\" extRef=\"XFComplementsMapperExtRef\"><a k=\"MappedFeaturePropertyBags\"><bagId>2</bagId></a></bag></FeaturePropertyBags>"
@@ -36,6 +41,7 @@ pub fn checkbox_part() -> String {
 }
 
 /// The `extLst` that marks an `xf` as a checkbox (complement index 0 of [`checkbox_part`]).
+#[cfg(feature = "write")]
 pub fn checkbox_xf_ext() -> String {
     format!("<extLst><ext uri=\"{XF_EXT_URI}\" xmlns:xfpb=\"{NS}\"><xfpb:xfComplement i=\"0\"/></ext></extLst>")
 }

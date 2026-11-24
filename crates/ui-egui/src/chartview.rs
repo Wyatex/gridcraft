@@ -372,8 +372,11 @@ pub(crate) fn paint_objects(app: &SheetApp, p: &Painter, geo: &Geo, wb: &Arc<Wor
                 label = false;
             }
             ShapeKind::Equation => {
-                crate::equation::paint_shape(p, r, sp, wb, geo.z);
-                label = false;
+                #[cfg(feature = "full")]
+                {
+                    crate::equation::paint_shape(p, r, sp, wb, geo.z);
+                    label = false;
+                }
             }
             ShapeKind::Line | ShapeKind::Arrow => {
                 p.line_segment([r.left_top(), r.right_bottom()], Stroke::new(2.0, line));

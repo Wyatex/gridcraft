@@ -10,11 +10,8 @@ use sha2::Digest as _;
 
 use crate::package::ZipOut;
 use crate::xml::{esc, esc_attr};
+pub use crate::xml::{NS_MAIN, NS_REL, XML_DECL, abs_range};
 use crate::{FunctionInfo, IoError, XlsxKind};
-
-pub const NS_MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
-pub const NS_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-pub const XML_DECL: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 
 pub const CT_WORKSHEET: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
 pub const CT_DRAWING: &str = "application/vnd.openxmlformats-officedocument.drawing+xml";
@@ -189,21 +186,6 @@ pub fn person_guid(i: usize) -> String {
 /// like [`person_guid`]).
 pub fn x14_cf_rule_guid(i: u32) -> String {
     format!("{{00000000-0000-4000-8003-{i:012X}}}")
-}
-
-/// `$A$1:$D$20` (or `$1:$3` / `$A:$C`).
-pub fn abs_range(r: &RangeRef) -> String {
-    let c = |col: u32| gridcraft_core::col_to_letters(col);
-    if r.is_full_rows() && !r.is_full_cols() {
-        return format!("${}:${}", r.start.row + 1, r.end.row + 1);
-    }
-    if r.is_full_cols() && !r.is_full_rows() {
-        return format!("${}:${}", c(r.start.col), c(r.end.col));
-    }
-    if r.is_single() {
-        return format!("${}${}", c(r.start.col), r.start.row + 1);
-    }
-    format!("${}${}:${}${}", c(r.start.col), r.start.row + 1, c(r.end.col), r.end.row + 1)
 }
 
 /// Refuses sheet names XLSX cannot hold. The reader repairs such names (cuts, strips, renames

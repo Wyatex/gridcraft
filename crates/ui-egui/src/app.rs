@@ -2,26 +2,38 @@
 use super::clock::monotonic_ms;
 use super::clock::now_ms;
 use super::services::{Chrome, Services};
-use super::state::{NoticeKind, OpenWindow, SaveAnswer, SheetView};
+#[cfg(feature = "full")]
+use super::state::SaveAnswer;
+use super::state::{NoticeKind, OpenWindow, SheetView};
 #[cfg(not(target_arch = "wasm32"))]
 use super::updates_ui;
+#[cfg(feature = "full")]
 use super::{
     CellRef, HashMap, INTERFACE_SCALE_MAX, INTERFACE_SCALE_MIN, Json, Notice, Perf, RangeRef, Session, SheetApp, UiRequest, UiState, backstage,
     clamp_interface_scale, clean_error, control, desktop_theme, dialogs, editor, floating_pictures, formula_bar, formula_locale, grid, i18n, json,
     keytips, macro_ui, panes, pivot_pane, printing, ribbon, tabs, text_box, theme, widgets,
 };
+#[cfg(not(feature = "full"))]
+use super::{
+    CellRef, HashMap, INTERFACE_SCALE_MAX, INTERFACE_SCALE_MIN, Json, Notice, Perf, RangeRef, Session, SheetApp, UiRequest, UiState,
+    clamp_interface_scale, clean_error, desktop_theme, dialogs, floating_pictures, formula_bar, grid, i18n, json, tabs, theme, widgets,
+};
 
 mod clipboard;
 mod commands;
+#[cfg(feature = "full")]
 mod editing;
-#[cfg(test)]
+#[cfg(all(feature = "full", test))]
 pub(crate) use editing::{DRAFT_CODE_HIDDEN, DRAFT_SHEET_GONE};
 mod files;
 mod fonts;
 mod input;
+#[cfg(feature = "full")]
 mod keys;
 mod prefs;
+#[cfg(feature = "full")]
 mod print;
+#[cfg(feature = "full")]
 mod quit;
 mod view;
 
@@ -30,22 +42,33 @@ impl SheetApp {
     pub fn new(session: Session, services: Services) -> SheetApp {
         SheetApp {
             session,
+            read_only: false,
             ui: UiState::default(),
             chrome: Chrome::default(),
             views: HashMap::new(),
+            #[cfg(feature = "full")]
             editor: None,
+            #[cfg(feature = "full")]
             text_box_editor: None,
             dialog: None,
+            #[cfg(feature = "full")]
             backstage: None,
             message: None,
             toast: None,
             notice: None,
+            show_xls_import_notice: true,
             services,
+            #[cfg(feature = "full")]
             printing: Default::default(),
+            #[cfg(feature = "full")]
             print_feedback_seen: None,
+            #[cfg(feature = "full")]
             synthetic: Default::default(),
+            #[cfg(feature = "full")]
             synthetic_pending: false,
+            #[cfg(feature = "full")]
             synthetic_injected_at_pass: None,
+            #[cfg(feature = "full")]
             control_rx: None,
             grid: grid::GridState {
                 last_border: "bottom".into(),
@@ -65,16 +88,22 @@ impl SheetApp {
             desktop_theme: desktop_theme::DesktopTheme::default(),
             desktop_dark: None,
             name_box: None,
+            #[cfg(feature = "full")]
             keytips: keytips::KeyTips::default(),
+            #[cfg(feature = "full")]
             shots: control::Shots::default(),
+            #[cfg(feature = "full")]
             capture_epoch: 0,
+            #[cfg(feature = "full")]
             capture_geometry: None,
+            #[cfg(feature = "full")]
             capture_geometry_from_raw: false,
             selected_object: None,
             chart_cache: Default::default(),
             clipboard_text_at_copy: None,
             cut_text: None,
             tab_run: None,
+            #[cfg(feature = "full")]
             macros: macro_ui::MacroUi::default(),
             started: now_ms(),
             allow_close: false,
@@ -88,6 +117,17 @@ impl SheetApp {
             arrange_windows: None,
             #[cfg(not(target_arch = "wasm32"))]
             updates_rt: Default::default(),
+        }
+    }
+
+    /// Switches the host into or out of viewer mode. The engine policy is kept in sync so direct
+    /// session calls from grid interactions are blocked as well as commands routed through the UI.
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+        self.session.set_read_only(read_only);
+        if read_only {
+            self.cancel_edit();
+            self.cancel_text_box_edit();
         }
     }
 
@@ -124,28 +164,23 @@ impl SheetApp {
         }
         self.sync_theme_preference(ctx);
         self.sync_input_options(ctx);
-        // The geometry captures are bound to. Native frames recorded it from their fresh
-        // `RawInput` in `raw_input_hook` (including hidden logic-only ticks); the epoch is
-        // monotonic, so a resize back to the original values is still a new epoch and old pixels
-        // are never saved with new geometry.
-        let capture_geometry = control::current_capture_geometry(self, ctx);
-        control::note_capture_geometry(self, capture_geometry);
-        // Drain before admission: completed or timed-out captures release their slots and
-        // reservation first, so a new request is never refused for budget that is about to free.
-        // Screenshot results, deadlines and geometry validation belong to `logic`; `ui` only
-        // issues the capture command (after every widget, so a command cannot be missed).
-        control::drain_screenshots(self, ctx);
-        control::poll(self, ctx);
-        // Printing feedback is polled once per frame, here, so hidden windows and logic-only
-        // frames still see worker completion. `ui` and the desktop app no longer poll it.
-        self.poll_printing(ctx);
-        self.guard_window_close(ctx);
+        #[cfg(feature = "full")]
+        {
+            let capture_geometry = control::current_capture_geometry(self, ctx);
+            control::note_capture_geometry(self, capture_geometry);
+            control::drain_screenshots(self, ctx);
+            control::poll(self, ctx);
+            self.poll_printing(ctx);
+            self.guard_window_close(ctx);
+        }
         #[cfg(not(target_arch = "wasm32"))]
         updates_ui::tick(self, ctx);
         // Files read asynchronously (web file picker, dropped files).
         self.poll_async_opens();
+        #[cfg(feature = "full")]
         self.autosave(ctx);
         self.update_title(ctx);
+        #[cfg(feature = "full")]
         self.request_hidden_paint(ctx);
         // One window always shows a workbook, unless each workbook has a native window of its own
         // (`doc_windows` decides what having none left means).
@@ -178,6 +213,7 @@ impl SheetApp {
     /// tabs only run `run_logic`), so a hidden web tab queues the work until it is shown again.
     /// This is a shared eframe web follow-up, not a GridCraft-local workaround, and the control
     /// protocol documents the limitation.
+    #[cfg(feature = "full")]
     fn request_hidden_paint(&self, ctx: &egui::Context) {
         if !(self.shots.needs_hidden_paint() || self.synthetic_pending || !self.synthetic.is_empty()) {
             return;
@@ -203,46 +239,60 @@ impl SheetApp {
         // This window's key tip request that waited for this frame (its tab or ribbon was just
         // shown); any other window's request was dropped before it.
         self.ui.keytip_invoke = self.ui.keytip_invoke_next.take();
-        text_box::before_ui(self, &ctx);
-        // Another window came forward without going through a command (which settles drafts
-        // first): the draft goes into its own window instead of floating over this one. If its
-        // workbook refuses it, its window comes back to the front with the draft open.
-        if self.draft_elsewhere() {
-            self.commit_edit(0, 0, false, false);
+        #[cfg(feature = "full")]
+        {
+            text_box::before_ui(self, &ctx);
+            if self.draft_elsewhere() {
+                self.commit_edit(0, 0, false, false);
+            }
         }
         // The language the widgets translate with this frame (see `i18n::current`).
         i18n::set_current(&ctx, self.ui.language);
         #[cfg(not(target_arch = "wasm32"))]
         updates_ui::show(self, &ctx);
         let t = theme::Tokens::get(&ctx);
-        // A host can turn the File tab off while Backstage is already open: close it.
-        if !self.chrome.file_tab {
-            self.backstage = None;
-        }
-        // Keytips opened the File view (Alt, F): its letters keep working there.
-        if self.backstage.is_none() || self.keytips.prefix().is_some() {
-            self.ribbon_keys(&ctx);
-        }
-        if self.chrome.title_bar {
-            ribbon::title_bar(self, ui);
-        }
-        if self.backstage.is_some() {
-            // File tab: the Backstage view replaces everything below the title bar.
-            backstage::show(self, ui);
-        } else {
-            ribbon::show(self, ui);
+        #[cfg(feature = "full")]
+        let show_backstage = {
+            if !self.chrome.file_tab {
+                self.backstage = None;
+            }
+            if (self.chrome.ribbon || self.chrome.file_tab) && (self.backstage.is_none() || self.keytips.prefix().is_some()) {
+                self.ribbon_keys(&ctx);
+            }
+            if self.chrome.title_bar {
+                ribbon::title_bar(self, ui);
+            }
+            if self.backstage.is_some() {
+                backstage::show(self, ui);
+                true
+            } else {
+                false
+            }
+        };
+        #[cfg(not(feature = "full"))]
+        let show_backstage = false;
+        if !show_backstage {
+            #[cfg(feature = "full")]
+            if self.chrome.ribbon {
+                ribbon::show(self, ui);
+            }
             widgets::notice_bar(self, ui);
-            // Python mode edits only in the formula bar: it shows while a Python edit is open,
-            // also when the preference hides it.
-            if self.session.prefs.formula_bar || self.editor.as_ref().is_some_and(|e| e.python) {
+            #[cfg(feature = "full")]
+            let python_edit = self.editor.as_ref().is_some_and(|e| e.python);
+            #[cfg(not(feature = "full"))]
+            let python_edit = false;
+            if self.session.prefs.formula_bar || python_edit {
                 formula_bar::show(self, ui);
             }
             if self.ui.status_bar {
                 tabs::status_bar(self, ui);
             }
             tabs::sheet_tabs(self, ui);
-            pivot_pane::show(self, ui);
-            panes::show(self, ui);
+            #[cfg(feature = "full")]
+            {
+                pivot_pane::show(self, ui);
+                panes::show(self, ui);
+            }
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.grid_bg)).show(ui, |ui| {
                 let g0 = now_ms();
                 grid::show(self, ui);
@@ -250,14 +300,19 @@ impl SheetApp {
             });
         }
         dialogs::show(self, &ctx);
-        macro_ui::forget_closed_editor(self);
-        macro_ui::question_box(self, &ctx);
+        #[cfg(feature = "full")]
+        {
+            macro_ui::forget_closed_editor(self);
+            macro_ui::question_box(self, &ctx);
+        }
         widgets::message_box(self, &ctx);
         widgets::toast(self, &ctx);
         // Last, so its resize cursors win over the widgets under the window edges.
+        #[cfg(feature = "full")]
         ribbon::window_frame(self, &ctx);
         self.flush_viewport_commands(&ctx);
         // Requests are admitted in `logic`, for the root viewport, so only its pass issues them.
+        #[cfg(feature = "full")]
         if ctx.viewport_id() == egui::ViewportId::ROOT {
             control::issue_screenshots(self, &ctx);
         }
@@ -273,11 +328,7 @@ impl SheetApp {
             }
         }
         self.perf.last = now;
-        // The step is applied only after a completed UI pass. A discarded or repeated pass of the
-        // same frame must not offer it again (grid sizing calls `ui` more than once per frame);
-        // provenance is the injected pass number, so only a pass that missed input handling is
-        // re-offered by `raw_input_hook`.
-        // Synthetic input reaches the root viewport only (`raw_input_hook`), so its pass consumes it.
+        #[cfg(feature = "full")]
         if self.synthetic_pending && ctx.viewport_id() == egui::ViewportId::ROOT {
             self.synthetic.pop_front();
             self.synthetic_pending = false;
@@ -315,9 +366,35 @@ impl SheetApp {
             ctx.send_viewport_cmd(command);
         }
     }
+
+    #[cfg(not(feature = "full"))]
+    pub fn cancel_edit(&mut self) {}
+
+    #[cfg(not(feature = "full"))]
+    pub fn cancel_text_box_edit(&mut self) {}
+
+    #[cfg(not(feature = "full"))]
+    pub(crate) fn editing_text_box(&self, _id: u32) -> bool {
+        false
+    }
+
+    #[cfg(not(feature = "full"))]
+    pub fn move_after_enter(&mut self, dr: i64, dc: i64) {
+        let multi = self
+            .session
+            .active()
+            .is_some_and(|d| !d.selection.is_single_cell() && !d.wb.active().is_some_and(|sh| d.selection.is_one_merged_cell(sh)));
+        if multi {
+            let fwd = dr > 0 || dc > 0;
+            let _ = self.session.run("selection.next", json!({"forward": fwd, "byRow": dc != 0}));
+        } else {
+            let _ = self.session.run("selection.move", json!({"dr": dr, "dc": dc}));
+        }
+        self.grid.ensure_visible = true;
+    }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "full"))]
 mod lifecycle_tests {
     use super::*;
 

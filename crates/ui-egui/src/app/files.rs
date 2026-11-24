@@ -1,5 +1,11 @@
 use super::{Json, Notice, NoticeKind, OpenWindow, SheetApp, clean_error, json};
 
+pub(super) const XLS_IMPORT_NOTICE_PREFIX: &str = "Imported from an Excel 97-2003 (.xls) workbook:";
+
+pub(super) fn is_xls_import_notice(message: &str) -> bool {
+    message.starts_with(XLS_IMPORT_NOTICE_PREFIX)
+}
+
 impl SheetApp {
     pub fn open_path(&mut self, path: &str) {
         match self.run("file.open", json!({"path": path})) {
@@ -15,7 +21,10 @@ impl SheetApp {
     /// list (for a file on disk) and the open warnings notice. Shared by File › Open, the
     /// password dialog and the control channel.
     pub fn after_open(&mut self, path: Option<&str>, r: &Json) {
-        self.backstage = None;
+        #[cfg(feature = "full")]
+        {
+            self.backstage = None;
+        }
         if let Some(path) = path {
             self.ui.recent.retain(|p| p != path);
             self.ui.recent.insert(0, path.to_string());
@@ -35,7 +44,8 @@ impl SheetApp {
             self.notice = None;
             return;
         };
-        let msgs: Vec<&str> = list.iter().filter_map(Json::as_str).collect();
+        let msgs: Vec<&str> =
+            list.iter().filter_map(Json::as_str).filter(|message| self.show_xls_import_notice || !is_xls_import_notice(message)).collect();
         if msgs.is_empty() {
             // A clean open clears any notice left over from the previous document.
             self.notice = None;
@@ -88,11 +98,17 @@ impl SheetApp {
             match self.run("file.open", json!({"name": &name, "base64": &b64})) {
                 // A file picked from File › Open (web) arrives here: show it, not the Backstage.
                 Ok(r) => {
-                    self.backstage = None;
+                    #[cfg(feature = "full")]
+                    {
+                        self.backstage = None;
+                    }
                     self.show_open_warnings(&r);
                 }
                 Err(e) if e.contains(gridcraft_engine::io::PASSWORD_REQUIRED) => {
-                    self.backstage = None;
+                    #[cfg(feature = "full")]
+                    {
+                        self.backstage = None;
+                    }
                     self.open_dialog("openPassword", json!({"name": name, "base64": b64}));
                 }
                 Err(e) => self.message = Some(("GridCraft".into(), clean_error(&e))),
@@ -104,6 +120,7 @@ impl SheetApp {
     /// AutoSave: save workbooks that have a file shortly after they change. This decision lives in
     /// `logic` so a hidden or logic-only frame still saves; the monotonic timestamp check keeps a
     /// forced hidden UI pass from saving the same change twice.
+    #[cfg(feature = "full")]
     pub(super) fn autosave(&mut self, ctx: &egui::Context) {
         let dirty_xlsx = self.session.active().is_some_and(|d| d.is_dirty() && d.path.as_deref().is_some_and(|p| p.ends_with(".xlsx")));
         let now = crate::monotonic_ms();

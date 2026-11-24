@@ -1,9 +1,14 @@
+#[cfg(feature = "editing")]
 use super::cell::input_to_cell;
+#[cfg(feature = "editing")]
 use super::paste_special::paste_special;
+#[cfg(feature = "editing")]
 use super::{
     Cell, CellRef, Clipboard, EngineError, Json, RangeRef, Result, Session, Value, bad, bool_param, cell_param_on, edit, json, ok, str_param,
     target_ranges, target_sheet,
 };
+#[cfg(not(feature = "editing"))]
+use super::{Cell, CellRef, Clipboard, EngineError, Json, RangeRef, Result, Session, json, ok, target_ranges, target_sheet};
 
 // ---------------------------------------------------------------- clipboard
 
@@ -88,6 +93,7 @@ fn visible_row_runs(range: RangeRef, hidden: &std::collections::BTreeSet<u32>) -
 
 /// The validation rules of `src` cut into the areas of a packed block: one rule per area a rule
 /// touches, over that area's part moved by the area's shift. `sorted` areas run in order.
+#[cfg(feature = "editing")]
 fn pack_validations(src: &gridcraft_model::Sheet, sorted: &[RangeRef], shifts: &[(i64, i64)], across: bool) -> Vec<gridcraft_model::Validation> {
     let key = |c: CellRef| if across { c.col } else { c.row };
     let mut packed_rules = Vec::new();
@@ -151,6 +157,7 @@ fn slide_together(wb: &gridcraft_model::Workbook, sheet: usize, areas: &[RangeRe
     dst.spill_ranges.retain(|c, _| !block.contains(*c));
     dst.comments.retain(|c, _| !block.contains(*c));
     dst.hyperlinks.retain(|c, _| !block.contains(*c));
+    #[cfg(feature = "editing")]
     super::super::data::remove_validation_cells(&mut dst.validations, &[block]);
     dst.merges.retain(|m| !m.intersects(&block));
     if across {
@@ -202,6 +209,7 @@ fn slide_together(wb: &gridcraft_model::Workbook, sheet: usize, areas: &[RangeRe
             dst.hyperlinks.insert(to, link.clone());
         }
     }
+    #[cfg(feature = "editing")]
     let packed_rules = pack_validations(src, &sorted, &shifts, across);
     for (c, comment) in &src.comments {
         if let Some(to) = moved(*c) {
@@ -229,6 +237,7 @@ fn slide_together(wb: &gridcraft_model::Workbook, sheet: usize, areas: &[RangeRe
         }
         next = next.saturating_add(if across { a.width() } else { a.height() });
     }
+    #[cfg(feature = "editing")]
     dst.validations.extend(packed_rules);
     Some((out, block))
 }
@@ -237,6 +246,7 @@ pub(super) fn copy(s: &mut Session, p: &Json) -> Result<Json> {
     copy_impl(s, p, false)
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn cut(s: &mut Session, p: &Json) -> Result<Json> {
     copy_impl(s, p, true)
 }
@@ -247,6 +257,7 @@ pub(super) fn clear_clipboard(s: &mut Session, _: &Json) -> Result<Json> {
     ok()
 }
 
+#[cfg(feature = "editing")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum What {
     All,
@@ -261,6 +272,7 @@ pub(super) enum What {
     ValuesAndNumberFormats,
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn paste(s: &mut Session, p: &Json) -> Result<Json> {
     // External text (from the system clipboard) when it differs from ours.
     if let Some(text) = str_param(p, "text")
@@ -278,6 +290,7 @@ pub(super) fn paste(s: &mut Session, p: &Json) -> Result<Json> {
 /// `to`, as Cut and Paste would. Like Excel, it asks before replacing cells that hold data or show a
 /// spilled value (other than the moved cells themselves); run it again with `overwrite: true` to replace them. A
 /// refused or failed move leaves the clipboard as it was.
+#[cfg(feature = "editing")]
 pub(super) fn range_move(s: &mut Session, p: &Json) -> Result<Json> {
     let sheet = target_sheet(s, p)?;
     let to = cell_param_on(s, p, "to", sheet)?.ok_or_else(|| bad("range.move", "missing `to`"))?;
@@ -308,6 +321,7 @@ pub(super) fn range_move(s: &mut Session, p: &Json) -> Result<Json> {
     moved
 }
 
+#[cfg(feature = "editing")]
 fn paste_text(s: &mut Session, p: &Json, text: &str) -> Result<Json> {
     let sheet = target_sheet(s, p)?;
     let at = cell_param_on(s, p, "at", sheet)?.unwrap_or(s.doc()?.selection.current().start);
@@ -348,6 +362,7 @@ fn paste_text(s: &mut Session, p: &Json, text: &str) -> Result<Json> {
 /// source recorded for it in its HTML, with a format that shows the same text when one can be
 /// inferred and the cell has none. The HTML cell must show the same text as the tab-separated
 /// field, so HTML that belongs to another copy (or a table laid out differently) changes nothing.
+#[cfg(feature = "editing")]
 fn numeric_from_html(cell: &mut Cell, field: &str, html: Option<&crate::clip_html::HtmlCell>, wb: &mut gridcraft_model::Workbook) {
     let Some(hc) = html else { return };
     let Some(n) = hc.num else { return };
@@ -366,6 +381,7 @@ fn numeric_from_html(cell: &mut Cell, field: &str, html: Option<&crate::clip_htm
 }
 
 /// Tab-separated text with Excel-style quoting.
+#[cfg(feature = "editing")]
 pub(crate) fn parse_tsv(text: &str) -> Vec<Vec<String>> {
     let mut rows = Vec::new();
     let mut row = Vec::new();

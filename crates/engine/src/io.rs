@@ -3,17 +3,27 @@
 use std::fmt::Write as _;
 
 use gridcraft_core::{CellRef, RangeRef};
-use gridcraft_model::{LineIndex, Sheet, Workbook};
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
+use gridcraft_model::LineIndex;
+use gridcraft_model::{Sheet, Workbook};
 
 use crate::{EngineError, Result};
 
+#[cfg(feature = "editing")]
 mod sylk;
 
 /// The function library's answers to what the XLSX and XLS readers and the XLSX writer need to know about functions
 /// (which names are built in, which parameters take a single value).
+#[cfg(feature = "calc")]
 pub const XLSX_FUNCTIONS: gridcraft_xlsx::FunctionInfo = gridcraft_xlsx::FunctionInfo {
     is_builtin: |name| gridcraft_functions::lookup(name).is_some(),
     is_scalar_arg: |name, i| gridcraft_functions::lookup(name).is_none_or(|s| s.is_scalar_arg(i)),
+};
+
+#[cfg(not(feature = "calc"))]
+pub const XLSX_FUNCTIONS: gridcraft_xlsx::FunctionInfo = gridcraft_xlsx::FunctionInfo {
+    is_builtin: |_| false,
+    is_scalar_arg: |_, _| true,
 };
 
 /// File formats GridCraft reads or writes.
@@ -42,10 +52,16 @@ impl FileKind {
             "ods" => FileKind::Ods,
             "csv" => FileKind::Csv,
             "tsv" | "tab" | "txt" => FileKind::Tsv,
-            ext if craft_gridcraft_format::is_extension(ext) => FileKind::Json,
             "html" | "htm" => FileKind::Html,
             "slk" => FileKind::Sylk,
-            _ => return None,
+            ext => {
+                #[cfg(feature = "json-format")]
+                if craft_gridcraft_format::is_extension(ext) {
+                    return Some(FileKind::Json);
+                }
+                let _ = ext;
+                return None;
+            }
         })
     }
 }
@@ -140,8 +156,11 @@ fn decrypt_message(name: &str, e: gridcraft_xlsx::DecryptError) -> String {
 /// [`adopt_python`]) within the limits of [`enforce_python_limits`].
 fn open_plain(name: &str, bytes: &[u8], csv_as_text: bool) -> Result<(Workbook, Vec<String>)> {
     let (mut wb, mut warnings) = read_plain(name, bytes, csv_as_text)?;
-    warnings.extend(crate::macros::load(&mut wb));
-    crate::cmd::controls::load_action_names(&mut wb);
+    #[cfg(feature = "editing")]
+    {
+        warnings.extend(crate::macros::load(&mut wb));
+        crate::cmd::controls::load_action_names(&mut wb);
+    }
     warnings.extend(adopt_python(&mut wb));
     warnings.extend(enforce_python_limits(&mut wb));
     Ok((wb, warnings))
@@ -311,32 +330,43 @@ fn read_plain(name: &str, bytes: &[u8], csv_as_text: bool) -> Result<(Workbook, 
             })?;
         return Ok((wb, report.warnings));
     }
+    #[cfg(feature = "editing")]
     if let Some(read) = read_html_table(name, kind, bytes, csv_as_text) {
         return read;
     }
     match kind {
         Some(FileKind::Json) => {
-            let mut wb: Workbook = craft_gridcraft_format::read(bytes).map_err(|e| EngineError::Other(e.to_string()))?;
-            wb.styles.rebuild_index();
-            if wb.sheets.is_empty() {
-                // The file's macros are read after this (`macros::load`), so they come along.
-                let macros = std::mem::take(&mut wb.macros_read);
-                wb = Workbook::new();
-                wb.macros_read = macros;
+            #[cfg(feature = "json-format")]
+            {
+                let mut wb: Workbook = craft_gridcraft_format::read(bytes).map_err(|e| EngineError::Other(e.to_string()))?;
+                wb.styles.rebuild_index();
+                if wb.sheets.is_empty() {
+                    // The file's macros are read after this (`macros::load`), so they come along.
+                    let macros = std::mem::take(&mut wb.macros_read);
+                    wb = Workbook::new();
+                    wb.macros_read = macros;
+                }
+                // The file's band placement and cell count are derived state: rebuild them from the
+                // cells themselves, dropping what is outside the sheet grid (#1008).
+                let dropped: usize = wb.sheets.iter_mut().map(|sh| std::sync::Arc::make_mut(sh).cells.rebuild()).sum();
+                let mut warnings = Vec::new();
+                if dropped > 0 {
+                    warnings.push(format!("{name}: {dropped} cells outside the 1,048,576 × 16,384 grid were dropped"));
+                }
+                Ok((wb, warnings))
             }
-            // The file's band placement and cell count are derived state: rebuild them from the
-            // cells themselves, dropping what is outside the sheet grid (#1008).
-            let dropped: usize = wb.sheets.iter_mut().map(|sh| std::sync::Arc::make_mut(sh).cells.rebuild()).sum();
-            let mut warnings = Vec::new();
-            if dropped > 0 {
-                warnings.push(format!("{name}: {dropped} cells outside the 1,048,576 × 16,384 grid were dropped"));
-            }
-            Ok((wb, warnings))
+            #[cfg(not(feature = "json-format"))]
+            Err(EngineError::Other(format!("We can't open '{name}': JSON workbook format is not enabled.")))
         }
         Some(FileKind::Sylk) => {
-            let (mut wb, warnings) = sylk::read(name, bytes)?;
-            rename_first_sheet(&mut wb, name);
-            Ok((wb, warnings))
+            #[cfg(feature = "editing")]
+            {
+                let (mut wb, warnings) = sylk::read(name, bytes)?;
+                rename_first_sheet(&mut wb, name);
+                Ok((wb, warnings))
+            }
+            #[cfg(not(feature = "editing"))]
+            Err(EngineError::Other(format!("We can't open '{name}': SYLK format is not enabled.")))
         }
         Some(FileKind::Tsv) => {
             let opts = gridcraft_xlsx::CsvOptions { delimiter: b'\t', parse_values: !csv_as_text, ..Default::default() };
@@ -375,6 +405,7 @@ fn part_too_large_message(name: &str, part: &str, size: u64) -> String {
 }
 
 /// How much of a text file is read to tell whether it is a web page.
+#[cfg(feature = "editing")]
 const HTML_SNIFF_BYTES: usize = 64 << 10;
 
 /// A web page that holds a table, whatever its extension: a web app's "Export to Excel" is often
@@ -382,6 +413,7 @@ const HTML_SNIFF_BYTES: usize = 64 << 10;
 /// and extension don't match): the cells read like typed input (or as text with `csv_as_text`),
 /// header cells (`<th>`) are bold and centred, and the sheet takes the name the page gives it
 /// (`<x:Name>`) or the file's. `None` when the bytes aren't such a page.
+#[cfg(feature = "editing")]
 fn read_html_table(name: &str, kind: Option<FileKind>, bytes: &[u8], csv_as_text: bool) -> Option<Result<(Workbook, Vec<String>)>> {
     // Every other text file (CSV, TSV, JSON) passes through here: look at the start only, and decode
     // the whole file once it is known to be a page within the size a text import takes.
@@ -464,6 +496,7 @@ fn read_html_table(name: &str, kind: Option<FileKind>, bytes: &[u8], csv_as_text
 }
 
 /// The text between the first `open` and the `close` after it, matched case-insensitively.
+#[cfg(feature = "editing")]
 fn find_between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
     let lower = text.to_ascii_lowercase();
     let start = lower.find(&open.to_ascii_lowercase())?.checked_add(open.len())?;
@@ -492,6 +525,7 @@ fn set_first_sheet_name(wb: &mut Workbook, stem: &str) {
 }
 
 /// Encodes a workbook in the format chosen by `path`'s extension.
+#[cfg(feature = "write")]
 pub fn save_bytes(wb: &Workbook, path: &str) -> Result<Vec<u8>> {
     // An unknown or missing extension is refused rather than written as an XLSX under that name:
     // a typo like `.cvs` would otherwise produce a file no other app recognises.
@@ -503,6 +537,7 @@ pub fn save_bytes(wb: &Workbook, path: &str) -> Result<Vec<u8>> {
 }
 
 /// Encodes a workbook as `kind`, whatever `path`'s extension says.
+#[cfg(feature = "write")]
 pub fn save_bytes_as(wb: &Workbook, path: &str, kind: FileKind) -> Result<Vec<u8>> {
     let sheet = wb.active_sheet();
     match kind {
@@ -510,11 +545,16 @@ pub fn save_bytes_as(wb: &Workbook, path: &str, kind: FileKind) -> Result<Vec<u8
         // the VBA project, so any other name saves without it, as Excel does.
         // Macros, and button actions xlsx has no place for, travel in hidden names.
         FileKind::Xlsx => {
-            let named = crate::macros::with_names(wb)?;
-            let named = match crate::cmd::controls::with_action_names(named.as_ref().unwrap_or(wb))? {
-                Some(w) => Some(w),
-                None => named,
+            #[cfg(feature = "editing")]
+            let named = {
+                let named = crate::macros::with_names(wb)?;
+                match crate::cmd::controls::with_action_names(named.as_ref().unwrap_or(wb))? {
+                    Some(w) => Some(w),
+                    None => named,
+                }
             };
+            #[cfg(not(feature = "editing"))]
+            let named: Option<Workbook> = None;
             let book = std::path::Path::new(path).file_name().and_then(std::ffi::OsStr::to_str).unwrap_or_default();
             gridcraft_xlsx::write_xlsx_named_with(named.as_ref().unwrap_or(wb), gridcraft_xlsx::XlsxKind::from_path(path), book, XLSX_FUNCTIONS)
                 .map_err(|e| EngineError::Other(e.to_string()))
@@ -530,13 +570,33 @@ pub fn save_bytes_as(wb: &Workbook, path: &str, kind: FileKind) -> Result<Vec<u8
         // A workbook read from CSV keeps the separator it was read with (a `;` file stays `;`).
         FileKind::Csv => wb.sheet(sheet).map(|sh| csv(wb, sh, wb.csv_delimiter.unwrap_or(b','))).transpose().map(Option::unwrap_or_default),
         FileKind::Tsv => wb.sheet(sheet).map(|sh| csv(wb, sh, b'\t')).transpose().map(Option::unwrap_or_default),
-        FileKind::Json => crate::macros::json_bytes(wb),
-        FileKind::Html => to_html(wb, sheet).map(String::into_bytes),
+        FileKind::Json => {
+            #[cfg(all(feature = "editing", feature = "json-format"))]
+            {
+                crate::macros::json_bytes(wb)
+            }
+            #[cfg(not(all(feature = "editing", feature = "json-format")))]
+            {
+                Err(EngineError::Other("JSON workbook export is not enabled.".into()))
+            }
+        }
+        FileKind::Html => {
+            #[cfg(all(feature = "editing", feature = "pdf"))]
+            {
+                to_html(wb, sheet).map(String::into_bytes)
+            }
+            #[cfg(not(all(feature = "editing", feature = "pdf")))]
+            {
+                let _ = sheet;
+                Err(EngineError::Other("HTML export is not enabled.".into()))
+            }
+        }
     }
 }
 
 /// [`save_bytes`] for the file at `path`: relative paths to linked workbooks are rewritten for
 /// its folder, so they still name the same files.
+#[cfg(feature = "write")]
 pub fn save_file_bytes(wb: &Workbook, path: &str) -> Result<Vec<u8>> {
     match source_dir(path).and_then(|f| gridcraft_xlsx::rebase_links(wb, &f)) {
         Some(rebased) => save_bytes(&rebased, path),
@@ -563,6 +623,7 @@ pub fn source_path(path: &str) -> Option<std::path::PathBuf> {
 /// `&` converts it (15 significant digits); from 1E+15 as the shortest digits that read back as
 /// the same value (every integer below 1e16 exactly, so long identifiers survive); small numbers
 /// that `&` writes in scientific notation as their 15 digits in full.
+#[cfg(feature = "write")]
 fn csv(wb: &Workbook, sh: &Sheet, delimiter: u8) -> Result<Vec<u8>> {
     gridcraft_xlsx::write_csv(sh, delimiter, |c| crate::display::value_text(wb, sh, c)).map_err(|e| EngineError::Other(e.to_string()))
 }
@@ -570,6 +631,7 @@ fn csv(wb: &Workbook, sh: &Sheet, delimiter: u8) -> Result<Vec<u8>> {
 /// The active sheet as CSV of raw cell values, for automation: numbers at full precision, dates and
 /// times as ISO 8601, booleans `TRUE`/`FALSE`, errors as their text, text as stored. Save As CSV
 /// writes displayed text instead ([`save_bytes`]) and stays the default.
+#[cfg(feature = "write")]
 pub fn csv_values_bytes(wb: &Workbook) -> Result<Vec<u8>> {
     let Some(sh) = wb.sheet(wb.active_sheet()) else { return Ok(Vec::new()) };
     gridcraft_xlsx::write_csv(sh, wb.csv_delimiter.unwrap_or(b','), |c| match sh.value(c) {
@@ -587,6 +649,7 @@ pub fn csv_values_bytes(wb: &Workbook) -> Result<Vec<u8>> {
 }
 
 /// `date` and `time` say which parts the cell's format shows; a format with neither is not a date.
+#[cfg(feature = "write")]
 fn iso(d: &gridcraft_core::date::DateTime, date: bool, time: bool) -> String {
     let day = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
     let mut clock = format!("{:02}:{:02}:{:02}", d.hour, d.minute, d.second);
@@ -600,11 +663,13 @@ fn iso(d: &gridcraft_core::date::DateTime, date: bool, time: bool) -> String {
     }
 }
 
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 pub(crate) fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
 }
 
 /// [`esc`], or `None` once the escaped text would pass `limit` bytes (nothing larger is built).
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 fn esc_within(s: &str, limit: usize) -> Option<String> {
     let mut out = String::with_capacity(s.len().min(limit));
     for c in s.chars() {
@@ -795,23 +860,28 @@ impl std::fmt::Write for ClipboardHtml {
 }
 
 /// Most rows Save as Web Page writes. A sheet whose used range is taller fails instead of losing cells.
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 const HTML_EXPORT_MAX_ROWS: u32 = 100_001;
 
 /// Rows × columns of one web-page table. Save as Web Page writes every kept row's full used
 /// column span into one growing String, so a sparse sheet with a lone far-right cell (or a
 /// tall, wide one) would otherwise be gigabytes of `<td></td>` before finishing (#2387).
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 const HTML_EXPORT_MAX_CELLS: u64 = 4_000_000;
 
 /// Most bytes of one web page. Every cell may hold long text (shared across many cells in the
 /// file), so the cell count alone doesn't bound the page; past this the export fails instead.
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 const HTML_EXPORT_MAX_BYTES: usize = 256 * 1024 * 1024;
 
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 fn html_too_big() -> EngineError {
     EngineError::Other(format!("the web page would be over {} MiB. Save as .xlsx or CSV instead.", HTML_EXPORT_MAX_BYTES / (1024 * 1024)))
 }
 
 /// A sheet as a standalone HTML table (Save as Web Page). A sheet with pictures gets the sheet's
 /// own column widths and row heights so each picture and chart (inline SVG) can sit at its anchor.
+#[cfg(all(feature = "write", feature = "editing", feature = "pdf"))]
 pub fn to_html(wb: &Workbook, sheet: usize) -> Result<String> {
     let Some(sh) = wb.sheet(sheet) else { return Ok(String::new()) };
     let fixed = !(sh.images.is_empty() && sh.charts.is_empty());

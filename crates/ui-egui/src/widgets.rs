@@ -4,6 +4,7 @@
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 
 use crate::SheetApp;
+#[cfg(feature = "full")]
 pub use crate::code_editor::{Lang, code_editor};
 use crate::i18n;
 use crate::icons::{self, Icon};
@@ -598,7 +599,8 @@ pub fn message_box(app: &mut SheetApp, ctx: &egui::Context) {
         });
         ui.add_space(8.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("  OK  ").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
+            let ok_label = format!("  {}  ", crate::i18n::current(ui.ctx()).tr("OK"));
+            if ui.button(ok_label).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)) {
                 close = true;
             }
         });
@@ -607,6 +609,7 @@ pub fn message_box(app: &mut SheetApp, ctx: &egui::Context) {
         app.message = None;
         // Back to the entry the message was about (a validation alert, a formula error), so it can
         // be fixed from the keyboard without clicking the cell again.
+        #[cfg(feature = "full")]
         if let Some(ed) = &mut app.editor {
             ed.request_focus = true;
         }

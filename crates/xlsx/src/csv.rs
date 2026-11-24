@@ -334,11 +334,13 @@ pub fn read_csv_with_report(bytes: &[u8], opts: &CsvOptions) -> Result<(Workbook
 /// An export that would pass the cap is refused before anything is allocated, or at the first
 /// field or line end that takes it past the cap (a field is measured before it is written), with
 /// [`IoError::TooLarge`]; accepted exports keep every field in its place.
+#[cfg(feature = "write")]
 pub fn write_csv(sheet: &Sheet, delimiter: u8, cell_text: impl FnMut(CellRef) -> String) -> Result<Vec<u8>, IoError> {
     write_csv_limited(sheet, delimiter, MAX_CSV_BYTES, cell_text)
 }
 
 /// [`write_csv`] with the output cap `limit` (bytes) given.
+#[cfg(feature = "write")]
 pub fn write_csv_limited(sheet: &Sheet, delimiter: u8, limit: usize, mut cell_text: impl FnMut(CellRef) -> String) -> Result<Vec<u8>, IoError> {
     let delim = if delimiter == 0 { ',' } else { delimiter as char };
     let mut out = String::new();

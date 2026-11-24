@@ -1,3 +1,4 @@
+#[cfg(feature = "editing")]
 use super::{
     CellRef, EngineError, Json, RangeRef, Result, Session, StyleId, bad, edit, f64_param, parse_lines, split_sheet, str_param, target_sheet,
 };
@@ -8,6 +9,7 @@ use super::{
 /// `rows`/`cols` (`"2:5"`, `"B:B,D:F"`, optionally `Sheet!`-prefixed), else the selection's; the
 /// sheet is `sheet`, else the prefix, else the active one. The selection belongs to the active
 /// sheet, so another sheet needs explicit lines.
+#[cfg(feature = "editing")]
 fn line_targets(s: &Session, p: &Json, rows: bool) -> Result<(usize, Vec<(u32, u32)>)> {
     let (sheet, lines) = resolve_lines(s, p, rows)?;
     // Sizes and visibility are formatting of the line, which a protected sheet must allow.
@@ -19,6 +21,7 @@ fn line_targets(s: &Session, p: &Json, rows: bool) -> Result<(usize, Vec<(u32, u
     Ok((sheet, lines))
 }
 
+#[cfg(feature = "editing")]
 fn resolve_lines(s: &Session, p: &Json, rows: bool) -> Result<(usize, Vec<(u32, u32)>)> {
     let key = if rows { "rows" } else { "cols" };
     let mut sheet = target_sheet(s, p)?;
@@ -51,6 +54,7 @@ fn resolve_lines(s: &Session, p: &Json, rows: bool) -> Result<(usize, Vec<(u32, 
 /// Sizes are pixels at 96 dpi, the model's unit (header drags send pixels). `points` (row height)
 /// and `chars` (column width) take Excel's units, those of its Row Height and Column Width dialogs
 /// and of the file (`ht` is in points).
+#[cfg(feature = "editing")]
 pub(super) fn row_height(s: &mut Session, p: &Json) -> Result<Json> {
     let h = match (f64_param(p, "height"), f64_param(p, "points")) {
         (Some(h), _) => {
@@ -83,6 +87,7 @@ pub(super) fn row_height(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn col_width(s: &mut Session, p: &Json) -> Result<Json> {
     let w = match (f64_param(p, "width"), f64_param(p, "chars")) {
         (Some(w), _) => {
@@ -187,8 +192,10 @@ fn arabic_em(c: char) -> Option<f32> {
 
 /// Distinct texts AutoFit measures exactly; past this many, `Session::text_width` is asked for a
 /// quick measure so a huge column doesn't lay out every value.
+#[cfg(feature = "editing")]
 const EXACT_TEXT_WIDTHS: usize = 2_000;
 
+#[cfg(feature = "editing")]
 pub(super) fn autofit_cols(s: &mut Session, p: &Json) -> Result<Json> {
     let (si, lines) = line_targets(s, p, false)?;
     let measure = s.text_width.clone();
@@ -263,6 +270,7 @@ pub(super) fn autofit_cols(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn autofit_rows(s: &mut Session, p: &Json) -> Result<Json> {
     let (si, lines) = line_targets(s, p, true)?;
     edit(s, |cx| {
@@ -283,6 +291,7 @@ pub(super) fn autofit_rows(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn default_width(s: &mut Session, p: &Json) -> Result<Json> {
     let w = f64_param(p, "width").ok_or_else(|| bad("home.defaultWidth", "missing `width`"))?;
     let si = target_sheet(s, p)?;
@@ -292,6 +301,7 @@ pub(super) fn default_width(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn hide(s: &mut Session, p: &Json, rows: bool, on: bool) -> Result<Json> {
     let (si, lines) = line_targets(s, p, rows)?;
     edit(s, |cx| {

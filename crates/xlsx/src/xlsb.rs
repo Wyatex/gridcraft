@@ -9,8 +9,7 @@ use std::sync::Arc;
 use gridcraft_core::{CellError, CellRef, DateSystem, RangeRef, Value};
 use gridcraft_model::{Cell, DefinedName, Formula, Preserved, PreservedPart, PreservedRel, PreservedXml, Sheet, StyleId, Visibility, Workbook};
 
-use crate::write::{NS_MAIN, NS_REL, XML_DECL};
-use crate::xml::{esc, esc_attr};
+use crate::xml::{NS_MAIN, NS_REL, XML_DECL, esc, esc_attr};
 use crate::{IoError, ReadReport};
 
 fn map_error(err: craft_xlsx::Error) -> IoError {

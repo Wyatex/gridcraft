@@ -1,45 +1,93 @@
 //! Cell entry, selection, undo/redo, clipboard, clear, fill, find & replace.
 
+#[cfg(feature = "editing")]
 use gridcraft_core::{CellRef, MAX_ROWS, RangeRef, Value};
+#[cfg(not(feature = "editing"))]
+use gridcraft_core::{CellRef, RangeRef};
+#[cfg(feature = "editing")]
 use gridcraft_model::{Cell, Formula, StyleId};
+#[cfg(not(feature = "editing"))]
+use gridcraft_model::Cell;
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, EngineError, Result, bad, bool_param, can_redo, can_undo, cell_param, cell_param_on, cmd, edit, f64_param, has_clipboard, has_doc,
     locked_cell_error, ok, split_sheet, str_param, target_range, target_ranges, target_sheet, u32_param,
 };
+#[cfg(not(feature = "editing"))]
+use super::{CommandSpec, EngineError, Result, bad, bool_param, cell_param, cmd, has_doc, ok, split_sheet, str_param, target_ranges, target_sheet};
 use crate::selection::{current_region, jump};
 use crate::{Clipboard, Session};
 
+#[cfg(feature = "editing")]
 mod cell;
 mod clipboard;
+#[cfg(feature = "editing")]
 mod fill;
 mod find;
 mod go_to;
+#[cfg(feature = "editing")]
 mod paste_special;
 mod selection;
 
+#[cfg(feature = "editing")]
 use cell::{cell_set, range_fill, range_set_values};
+#[cfg(feature = "editing")]
 pub(crate) use cell::{check_arg_counts, input_to_cell, is_formula_input, json_to_input, parse_typed_formula};
-#[cfg(test)]
+#[cfg(all(feature = "editing", test))]
 pub(crate) use clipboard::parse_tsv;
+#[cfg(feature = "editing")]
 use clipboard::{clear_clipboard, copy, cut, paste, range_move};
+#[cfg(not(feature = "editing"))]
+use clipboard::{clear_clipboard, copy};
+#[cfg(feature = "editing")]
 use fill::{auto_fill, fill_dir, fill_series, flash_fill};
-#[cfg(test)]
+#[cfg(all(feature = "editing", test))]
 use find::replace_ci;
+#[cfg(feature = "editing")]
 pub(crate) use find::wildcard;
+#[cfg(feature = "editing")]
 use find::{find, replace};
+#[cfg(not(feature = "editing"))]
+use find::find;
 pub(super) use go_to::go_to;
 pub use go_to::go_to_names;
 use go_to::go_to_special;
 #[cfg(test)]
 use go_to::{GO_TO_MAX_AREAS, GO_TO_RECENT, reference_parts};
+#[cfg(feature = "editing")]
 use paste_special::paste_special;
+#[cfg(feature = "editing")]
 pub(crate) use paste_special::{place_moved_rules, rewrite_all_formulas_many, rewrite_python_refs};
+#[cfg(feature = "editing")]
 use selection::{select_all, select_col, select_region, select_row, selection_move, selection_next, selection_next_corner, selection_set};
+#[cfg(not(feature = "editing"))]
+use selection::{select_all, select_col, select_region, select_row, selection_move, selection_next, selection_set};
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
+    let v = vec![
+        cmd!(noundo "selection.set", "Select", [], None, "{range: \"A1:B2,D4\" | cell, active?: \"A1\", sheet?}", has_doc, selection_set),
+        cmd!(noundo "selection.move", "Move Selection", [], None, "{dr, dc, extend?: bool, jump?: bool (Ctrl+arrow), page?: bool}", has_doc, selection_move),
+        cmd!(noundo "selection.next", "Next Cell in Selection", [], None, "{forward?: true, byRow?: false} (Enter/Tab inside a selection)", has_doc, selection_next),
+        cmd!(noundo "edit.selectAll", "Select All", ["Edit"], Some("Cmd+A"), "{} (current region first, then the whole sheet)", has_doc, select_all),
+        cmd!(noundo "selection.currentRegion", "Select Current Region", [], Some("Ctrl+Shift+8"), "{}", has_doc, select_region),
+        cmd!(noundo "selection.row", "Select Entire Row", [], Some("Shift+Space"), "{}", has_doc, select_row),
+        cmd!(noundo "selection.column", "Select Entire Column", [], Some("Ctrl+Space"), "{}", has_doc, select_col),
+        cmd!(noundo "edit.goTo", "Go To…", ["Home", "Editing", "Find & Select"], Some("Ctrl+G"), "{reference: \"B5\" | \"Sheet2!A1:C3\" | name | \"Sheet2!Name\" | \"B14:C22,F19:G30\" | \"Price, Type\", record?: bool} (record: keep a reference without names among the recent ones) or {list: true} → {names, recent}", has_doc, go_to),
+        cmd!(noundo "edit.goToSpecial", "Go To Special…", ["Home", "Editing", "Find & Select"], None, "{kind: blanks|constants|formulas|comments|lastCell|currentRegion|visible|conditionalFormats|dataValidation|errors|numbers|text}", has_doc, go_to_special),
+        cmd!(noundo "edit.copy", "Copy", ["Home", "Clipboard"], Some("Cmd+C"), "{range?, html?: bool} → {range, text, html?} (html: a styled HTML table, only when requested and small enough)", has_doc, copy),
+        cmd!(noundo "edit.clearClipboard", "Cancel Copy", [], Some("Escape"), "{}", has_doc, clear_clipboard),
+        cmd!(noundo "edit.find", "Find…", ["Home", "Editing", "Find & Select"], Some("Cmd+F"), "{what, matchCase?, wholeCell?, lookIn?: formulas|values, byColumns?, all?: bool, within?: sheet|workbook|selection} (selection: only the selected cells; Find Next keeps them selected and moves the active cell)", has_doc, find),
+    ];
+    #[cfg(not(feature = "editing"))]
+    {
+        v
+    }
+    #[cfg(feature = "editing")]
+    {
+        let mut v = v;
+        v.extend([
         cmd!("cell.set", "Enter Cell", [], None, "{cell?: \"B2\", input: \"text, number or =formula\", sheet?, array?: bool}", has_doc, cell_set),
         cmd!(
             "range.setValues",
@@ -59,9 +107,6 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             range_fill
         ),
-        cmd!(noundo "selection.set", "Select", [], None, "{range: \"A1:B2,D4\" | cell, active?: \"A1\", sheet?}", has_doc, selection_set),
-        cmd!(noundo "selection.move", "Move Selection", [], None, "{dr, dc, extend?: bool, jump?: bool (Ctrl+arrow), page?: bool}", has_doc, selection_move),
-        cmd!(noundo "selection.next", "Next Cell in Selection", [], None, "{forward?: true, byRow?: false} (Enter/Tab inside a selection)", has_doc, selection_next),
         cmd!(
             noundo "selection.nextCorner",
             "Next Corner of Selection",
@@ -71,15 +116,8 @@ pub fn specs() -> Vec<CommandSpec> {
             has_doc,
             selection_next_corner
         ),
-        cmd!(noundo "edit.selectAll", "Select All", ["Edit"], Some("Cmd+A"), "{} (current region first, then the whole sheet)", has_doc, select_all),
-        cmd!(noundo "selection.currentRegion", "Select Current Region", [], Some("Ctrl+Shift+8"), "{}", has_doc, select_region),
-        cmd!(noundo "selection.row", "Select Entire Row", [], Some("Shift+Space"), "{}", has_doc, select_row),
-        cmd!(noundo "selection.column", "Select Entire Column", [], Some("Ctrl+Space"), "{}", has_doc, select_col),
-        cmd!(noundo "edit.goTo", "Go To…", ["Home", "Editing", "Find & Select"], Some("Ctrl+G"), "{reference: \"B5\" | \"Sheet2!A1:C3\" | name | \"Sheet2!Name\" | \"B14:C22,F19:G30\" | \"Price, Type\", record?: bool} (record: keep a reference without names among the recent ones) or {list: true} → {names, recent}", has_doc, go_to),
-        cmd!(noundo "edit.goToSpecial", "Go To Special…", ["Home", "Editing", "Find & Select"], None, "{kind: blanks|constants|formulas|comments|lastCell|currentRegion|visible|conditionalFormats|dataValidation|errors|numbers|text}", has_doc, go_to_special),
         cmd!(noundo "edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{steps?: 1}", can_undo, undo),
         cmd!(noundo "edit.redo", "Redo", ["Edit"], Some("Cmd+Y"), "{steps?: 1}", can_redo, redo),
-        cmd!(noundo "edit.copy", "Copy", ["Home", "Clipboard"], Some("Cmd+C"), "{range?, html?: bool} → {range, text, html?} (html: a styled HTML table, only when requested and small enough)", has_doc, copy),
         cmd!(noundo "edit.cut", "Cut", ["Home", "Clipboard"], Some("Cmd+X"), "{range?, html?: bool} → {range, text, html?} (html: a styled HTML table, only when requested and small enough)", has_doc, cut),
         cmd!(
             "edit.paste",
@@ -111,7 +149,6 @@ pub fn specs() -> Vec<CommandSpec> {
                 paste_special
             )
         },
-        cmd!(noundo "edit.clearClipboard", "Cancel Copy", [], Some("Escape"), "{}", has_doc, clear_clipboard),
         cmd!("edit.clearAll", "Clear All", ["Home", "Editing", "Clear"], None, "{range?}", has_doc, |s, p| clear(s, p, "all")),
         cmd!("edit.clearFormats", "Clear Formats", ["Home", "Editing", "Clear"], None, "{range?}", has_doc, |s, p| clear(s, p, "formats")),
         cmd!("edit.clearContents", "Clear Contents", ["Home", "Editing", "Clear"], Some("Delete"), "{range?}", has_doc, |s, p| clear(
@@ -144,7 +181,6 @@ pub fn specs() -> Vec<CommandSpec> {
             fill_series
         ),
         cmd!("edit.flashFill", "Flash Fill", ["Home", "Editing", "Fill"], Some("Ctrl+E"), "{range?}", has_doc, flash_fill),
-        cmd!(noundo "edit.find", "Find…", ["Home", "Editing", "Find & Select"], Some("Cmd+F"), "{what, matchCase?, wholeCell?, lookIn?: formulas|values, byColumns?, all?: bool, within?: sheet|workbook|selection} (selection: only the selected cells; Find Next keeps them selected and moves the active cell)", has_doc, find),
         cmd!(
             "edit.replace",
             "Replace…",
@@ -164,7 +200,9 @@ pub fn specs() -> Vec<CommandSpec> {
             format_painter
         ),
         cmd!(noundo "edit.beginEdit", "Edit Cell", [], Some("F2"), "{}", has_doc, begin_edit),
-    ]
+        ]);
+        v
+    }
 }
 
 /// Merges cells into vertical runs per column (a compact multi-area selection).
@@ -191,6 +229,7 @@ fn coalesce(cells: &[CellRef]) -> Vec<RangeRef> {
 
 // ---------------------------------------------------------------- history
 
+#[cfg(feature = "editing")]
 fn undo(s: &mut Session, p: &Json) -> Result<Json> {
     let steps = u32_param(p, "steps").unwrap_or(1).max(1);
     let d = s.doc_mut()?;
@@ -214,6 +253,7 @@ fn undo(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"undone": label}))
 }
 
+#[cfg(feature = "editing")]
 fn redo(s: &mut Session, p: &Json) -> Result<Json> {
     let steps = u32_param(p, "steps").unwrap_or(1).max(1);
     let d = s.doc_mut()?;
@@ -249,6 +289,7 @@ fn filtered_rows(sh: &gridcraft_model::Sheet, range: RangeRef) -> std::collectio
 
 /// The Clear commands (Delete is Clear Contents). As in Excel, the rows an applied filter hides
 /// are left as they are; rows hidden by hand are cleared.
+#[cfg(feature = "editing")]
 fn clear(s: &mut Session, p: &Json, what: &str) -> Result<Json> {
     let sheet = target_sheet(s, p)?;
     let ranges = target_ranges(s, p)?;
@@ -379,6 +420,7 @@ fn clear(s: &mut Session, p: &Json, what: &str) -> Result<Json> {
 
 // ---------------------------------------------------------------- format painter
 
+#[cfg(feature = "editing")]
 fn format_painter(s: &mut Session, p: &Json) -> Result<Json> {
     if let Some(dest) = str_param(p, "apply").and_then(RangeRef::parse) {
         let Some((wb, sheet, src, sticky)) = s.format_painter.clone() else { return Err(EngineError::Other("Pick up a format first.".into())) };
@@ -466,6 +508,7 @@ fn format_painter(s: &mut Session, p: &Json) -> Result<Json> {
     ok()
 }
 
+#[cfg(feature = "editing")]
 fn begin_edit(s: &mut Session, _: &Json) -> Result<Json> {
     s.ui_requests.push(crate::UiRequest::EditCell(None));
     ok()

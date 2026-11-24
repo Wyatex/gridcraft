@@ -9,6 +9,7 @@
 use egui::epaint::PathShape;
 use egui::{Painter, Pos2, Rect, Stroke, StrokeKind, pos2, vec2};
 use gridcraft_engine::model::{ControlKind, FormControl, ObjKind, ObjRef, Sheet};
+#[cfg(feature = "full")]
 use serde_json::json;
 
 use crate::SheetApp;
@@ -16,7 +17,9 @@ use crate::grid::Geo;
 use crate::theme::{self, Tokens};
 
 /// How long an arrow or the track waits before it repeats, and then between repeats (seconds).
+#[cfg(feature = "full")]
 const REPEAT_DELAY: f64 = 0.4;
+#[cfg(feature = "full")]
 const REPEAT_EVERY: f64 = 0.06;
 
 /// The part of a control under the pointer.
@@ -218,6 +221,7 @@ pub fn look(app: &SheetApp, geo: &Geo, c: &FormControl, r: Rect, hover: Option<P
 
 impl SheetApp {
     /// Sets a slider or spin button's value; inside a gesture, keeps it one undo step.
+    #[cfg(feature = "full")]
     fn control_set(&mut self, id: u32, value: f64) -> bool {
         match self.session.run("control.setValue", json!({"id": id, "value": value})) {
             Ok(_) => {
@@ -239,6 +243,7 @@ impl SheetApp {
 
     /// Moves a slider or spin button by `steps` steps (negative: toward the minimum), or by pages
     /// when `page` is set.
+    #[cfg(feature = "full")]
     pub fn control_nudge(&mut self, id: u32, steps: i64, page: bool) -> bool {
         let Some(c) = self.session.active().and_then(|d| d.wb.active()).and_then(|sh| find(sh, id)).cloned() else { return false };
         if c.kind == ControlKind::Button {
@@ -250,6 +255,7 @@ impl SheetApp {
 
     /// Runs a button's action. Questions (approve it, make room for a macro's output) become a
     /// prompt.
+    #[cfg(feature = "full")]
     pub fn press_button(&mut self, id: u32) {
         crate::control_ui::press(self, json!({"id": id}));
     }
@@ -257,6 +263,7 @@ impl SheetApp {
 
 /// Pointer handling for controls on the grid. Returns true when it used the pointer this frame
 /// (so the grid neither selects cells nor objects).
+#[cfg(feature = "full")]
 pub fn interact(app: &mut SheetApp, ctx: &egui::Context, resp: &egui::Response, geo: &Geo, sh: &Sheet) -> bool {
     let (pointer, mods, time) = ctx.input(|i| (i.pointer.clone(), i.modifiers, i.time));
     let pos = pointer.interact_pos().or(pointer.hover_pos()).map(|p| geo.mirror_pos(p));
@@ -347,6 +354,7 @@ pub fn interact(app: &mut SheetApp, ctx: &egui::Context, resp: &egui::Response, 
 }
 
 /// One click on an arrow or the track.
+#[cfg(feature = "full")]
 fn step_part(app: &mut SheetApp, c: &FormControl, part: Part) {
     match part {
         Part::Up => app.control_nudge(c.id, 1, false),
@@ -360,6 +368,7 @@ fn step_part(app: &mut SheetApp, c: &FormControl, part: Part) {
 /// Whether the focused control is a button. Space presses one, so the space it types must not
 /// start a cell edit; a slider or spin button doesn't take Space, and its space reaches the grid
 /// like any other character.
+#[cfg(feature = "full")]
 pub fn focused_button(app: &SheetApp, sh: &Sheet) -> bool {
     app.grid.focused_control.and_then(|id| find(sh, id)).is_some_and(|c| c.kind == ControlKind::Button)
 }
@@ -367,6 +376,7 @@ pub fn focused_button(app: &SheetApp, sh: &Sheet) -> bool {
 /// The grid takes a key while a control is focused: a button gives the keyboard back, so a later
 /// Enter or Space doesn't press it again and Space starts a cell edit; a slider or spin button
 /// keeps it, as the control last worked, which the arrows still step.
+#[cfg(feature = "full")]
 pub fn key_to_grid(app: &mut SheetApp, sh: &Sheet) {
     if focused_button(app, sh) {
         app.grid.focused_control = None;
@@ -376,6 +386,7 @@ pub fn key_to_grid(app: &mut SheetApp, sh: &Sheet) {
 /// Keys for the focused control: arrows move by a step, Page Up and Page Down by a page, Home and
 /// End to the ends; Space or Enter presses a button. True when the key was used. `repeat` is a key
 /// held down: it steps a slider or spin button again, but a button runs once per press.
+#[cfg(feature = "full")]
 pub fn key(app: &mut SheetApp, sh: &Sheet, key: egui::Key, repeat: bool) -> bool {
     use egui::Key;
     let Some(c) = app.grid.focused_control.and_then(|id| find(sh, id)).cloned() else { return false };

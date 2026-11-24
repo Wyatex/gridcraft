@@ -31,7 +31,7 @@ fn the_title_bar_and_file_tab_are_drawn_by_default() {
 #[test]
 fn a_host_can_leave_out_the_title_bar_and_the_file_tab() {
     let full = harness(Chrome::default());
-    let h = harness(Chrome { title_bar: false, file_tab: false });
+    let h = harness(Chrome { title_bar: false, file_tab: false, ..Chrome::default() });
     assert!(h.query_by_label("AutoSave").is_none(), "no title bar");
     assert!(h.query_by_label("File").is_none(), "no File tab");
     // The ribbon tabs are painted text, so measure the move with the first ribbon control.
@@ -43,7 +43,7 @@ fn a_host_can_leave_out_the_title_bar_and_the_file_tab() {
 
 #[test]
 fn without_the_file_tab_the_backstage_view_never_opens() {
-    let mut h = harness(Chrome { title_bar: true, file_tab: false });
+    let mut h = harness(Chrome { title_bar: true, file_tab: false, ..Chrome::default() });
     h.state_mut().open_backstage(Page::Home);
     h.run_steps(3);
     assert!(h.state().backstage.is_none(), "opening Backstage directly is ignored");
@@ -62,4 +62,15 @@ fn turning_the_file_tab_off_closes_an_open_backstage() {
     h.state_mut().chrome.file_tab = false;
     h.run_steps(3);
     assert!(h.state().backstage.is_none(), "and closes when the host turns the File tab off");
+}
+
+#[test]
+fn a_host_can_hide_the_ribbon() {
+    let with_ribbon = harness(Chrome { title_bar: false, file_tab: false, ribbon: true });
+    let without_ribbon = harness(Chrome { title_bar: false, file_tab: false, ribbon: false });
+    assert!(with_ribbon.query_by_label("Paste").is_some(), "ribbon controls render when ribbon is shown");
+    assert!(without_ribbon.query_by_label("Paste").is_none(), "ribbon controls are hidden when ribbon is false");
+    let with_bar_y = gridcraft_ui_egui::formula_bar::BarLayout::get(&with_ribbon.ctx).field.min.y;
+    let without_bar_y = gridcraft_ui_egui::formula_bar::BarLayout::get(&without_ribbon.ctx).field.min.y;
+    assert!(without_bar_y < with_bar_y, "hiding the ribbon moves the formula bar up ({without_bar_y} < {with_bar_y})");
 }

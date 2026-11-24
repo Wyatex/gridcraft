@@ -1,5 +1,9 @@
+#[cfg(feature = "editing")]
 use super::cell::input_to_cell;
+#[cfg(feature = "editing")]
 use super::{Cell, CellRef, EngineError, Json, Result, Session, Value, bad, bool_param, edit, json, str_param};
+#[cfg(not(feature = "editing"))]
+use super::{CellRef, EngineError, Json, Result, Session, bad, bool_param, json, str_param};
 
 // ---------------------------------------------------------------- find & replace
 
@@ -171,15 +175,19 @@ pub(super) fn find(s: &mut Session, p: &Json) -> Result<Json> {
 }
 
 /// Most characters a cell holds (Excel's limit).
+#[cfg(feature = "editing")]
 const REPLACE_CELL_MAX_CHARS: usize = 32_767;
 /// Longest text one replacement may give a cell, in bytes: the character limit, each up to four
 /// bytes. Every occurrence copies the replacement text, so a short cell full of matches and a
 /// long replacement would otherwise expand to gigabytes. The character limit is checked on what
 /// fits in this.
+#[cfg(feature = "editing")]
 const REPLACE_CELL_MAX_BYTES: usize = REPLACE_CELL_MAX_CHARS * 4;
 /// Most bytes of replaced text one Replace All builds across all its cells.
+#[cfg(feature = "editing")]
 const REPLACE_TOTAL_MAX_BYTES: usize = 256 * 1024 * 1024;
 
+#[cfg(feature = "editing")]
 pub(super) fn replace(s: &mut Session, p: &Json) -> Result<Json> {
     let what = str_param(p, "what").unwrap_or("").to_string();
     let with = str_param(p, "with").unwrap_or("");
@@ -272,6 +280,7 @@ pub(super) fn replace(s: &mut Session, p: &Json) -> Result<Json> {
 
 /// Whether case-folding `s` maps every char to exactly one char of the same UTF-8 length, so
 /// byte positions in the folded text still line up with the original's character boundaries.
+#[cfg(feature = "editing")]
 fn folds_in_place(s: &str) -> bool {
     s.chars().all(|c| {
         let mut folded = c.to_lowercase();
@@ -280,13 +289,14 @@ fn folds_in_place(s: &str) -> bool {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(feature = "editing", test))]
 pub(super) fn replace_ci(text: &str, what: &str, with: &str) -> String {
     replace_ci_within(text, what, with, usize::MAX).unwrap_or_default()
 }
 
 /// `text` with every `what` replaced by `with`, or `None` once the result passes `limit` bytes
 /// (checked before each copy, so nothing larger is allocated).
+#[cfg(feature = "editing")]
 pub(super) fn replace_cs_within(text: &str, what: &str, with: &str, limit: usize) -> Option<String> {
     if what.is_empty() {
         return (text.len() <= limit).then(|| text.to_string());
@@ -310,6 +320,7 @@ pub(super) fn replace_cs_within(text: &str, what: &str, with: &str, limit: usize
 }
 
 /// Case-insensitive [`replace_cs_within`].
+#[cfg(feature = "editing")]
 pub(super) fn replace_ci_within(text: &str, what: &str, with: &str, limit: usize) -> Option<String> {
     let lower = text.to_lowercase();
     let w = what.to_lowercase();

@@ -9,6 +9,8 @@ description = "GridCraft document model: workbooks, sheets, cells, styles, table
 workspace = true
 
 [features]
+default = ["latex"]
+latex = ["gridcraft-math/latex"]
 # Counts work for other crates' growth tests (a dev-dependency feature; never enabled in a
 # shipped build).
 test-support = []
@@ -17,7 +19,7 @@ test-support = []
 gridcraft-core = { workspace = true }
 sha2 = { workspace = true }
 gridcraft-formula = { workspace = true }
-gridcraft-math = { workspace = true }
+gridcraft-math = { path = "../math", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

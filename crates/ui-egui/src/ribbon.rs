@@ -28,7 +28,6 @@ mod view;
 
 use automate::automate;
 use contextual::{chart_design, table_design};
-pub(crate) use controls::{ComboResult, editable_combo};
 use controls::{act, keytip};
 use data::data;
 use formulas::formulas;

@@ -27,10 +27,13 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
+#[cfg(feature = "write")]
 use std::path::{Component, Path};
 use std::sync::Arc;
 
-use gridcraft_model::{Preserved, PreservedPart, PreservedRel, PreservedSheet, PreservedXml, Sheet, Visibility, Workbook};
+#[cfg(feature = "write")]
+use gridcraft_model::{Sheet, Workbook};
+use gridcraft_model::{Preserved, PreservedPart, PreservedRel, PreservedSheet, PreservedXml, Visibility};
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::QName;
@@ -39,17 +42,22 @@ use quick_xml::{Reader, Writer};
 use crate::IoError;
 use crate::package::{self, normalize};
 use crate::read::Ctx;
-use crate::write::{NS_REL, Out, Rels, XML_DECL};
-use crate::xml::{self, esc_attr};
+#[cfg(feature = "write")]
+use crate::write::{Out, Rels, XML_DECL};
+use crate::xml::{self, NS_REL, esc_attr};
 
 mod read;
+#[cfg(feature = "write")]
 mod rebase;
+#[cfg(feature = "write")]
 mod write;
 
 pub use read::KeptReader;
+#[cfg(feature = "write")]
 pub use rebase::{SheetKept, rebase_links};
-#[cfg(test)]
+#[cfg(all(test, feature = "write"))]
 pub(crate) use write::sheet_names_in;
+#[cfg(feature = "write")]
 pub use write::{KeptOut, SheetIds, WorkbookKept, workbook_elements, write_package_rels, write_workbook};
 
 /// Most bytes kept for one workbook.
@@ -156,6 +164,7 @@ const CHART_SHEET_GRAPH: &[&str] = &["chartsheet", "drawing", "chart", "chartex"
 
 /// Part-name prefixes (lower case) GridCraft's writer never produces: kept parts there keep their
 /// original names. Anything else is renamed so it can't collide with written parts.
+#[cfg(feature = "write")]
 const OWN_DIRS: &[&str] = &[
     "customxml/",
     "docprops/custom.xml",

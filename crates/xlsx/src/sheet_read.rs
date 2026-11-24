@@ -31,6 +31,13 @@ pub use parts::read_autofilter;
 use parts::read_threaded;
 use rules::{read_cf, read_validation, read_x14_cf};
 
+pub(crate) const DEFAULT_NOTE_SIZE_PT: (f64, f64) = (108.0, 59.25);
+pub(crate) const DEFAULT_NOTE_BOX: NoteBox = NoteBox {
+    from: NoteCorner { col: 1, col_px: 15, row: 0, row_px: 2 },
+    to: NoteCorner { col: 3, col_px: 15, row: 4, row_px: 16 },
+    size_pt: Some(DEFAULT_NOTE_SIZE_PT),
+};
+
 struct Shared {
     anchor: CellRef,
     expr: Option<Expr>,

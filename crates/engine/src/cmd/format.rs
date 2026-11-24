@@ -1,13 +1,34 @@
 //! Formatting: Home › Font, Alignment, Number, Styles, Cells › Format.
 
-use gridcraft_core::{CellRef, RangeRef};
-use gridcraft_model::{BorderLine, BorderStyle, Borders, Color, Fill, HAlign, NumFmt, Style, StyleId, Theme, Underline, VAlign, VertAlign};
-use serde_json::{Value as Json, json};
+pub use gridcraft_model::points_to_chars;
+mod sizes;
+pub use sizes::{approx_text_width, chars_to_points};
 
+#[cfg(feature = "editing")]
+use gridcraft_core::{CellRef, RangeRef};
+#[cfg(feature = "editing")]
+use gridcraft_model::{BorderLine, BorderStyle, Borders, Color, Fill, HAlign, NumFmt, Style, StyleId, Theme, Underline, VAlign, VertAlign};
+#[cfg(feature = "editing")]
+use serde_json::{Value as Json, json};
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, EngineError, Result, Session, bad, bool_param, cmd, edit, f64_param, has_doc, ok, parse_lines, split_sheet, str_param,
     target_ranges, target_sheet,
 };
+
+#[cfg(feature = "editing")]
+mod cell_styles;
+#[cfg(feature = "editing")]
+pub use cell_styles::{CELL_STYLE_NAMES, builtin_cell_style};
+
+#[cfg(feature = "editing")]
+mod full {
+    use super::cell_styles::cell_style;
+    use super::sizes::{autofit_cols, autofit_rows, col_width, default_width, hide, row_height};
+    use super::{
+        BorderLine, BorderStyle, Borders, CellRef, Color, CommandSpec, EngineError, Fill, HAlign, Json, NumFmt, RangeRef, Result, Session, Style,
+        StyleId, Underline, VAlign, VertAlign, bad, bool_param, cmd, edit, f64_param, has_doc, json, ok, str_param, target_ranges, target_sheet,
+    };
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
@@ -212,8 +233,8 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-const ACCOUNTING: &str = "_(\"$\"* #,##0.00_);_(\"$\"* \\(#,##0.00\\);_(\"$\"* \"-\"??_);_(@_)";
-const COMMA: &str = "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)";
+pub(super) const ACCOUNTING: &str = "_(\"$\"* #,##0.00_);_(\"$\"* \\(#,##0.00\\);_(\"$\"* \"-\"??_);_(@_)";
+pub(super) const COMMA: &str = "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)";
 
 /// Accounting Number Format with the currency symbol to use (Excel's own button takes the system
 /// currency; `symbol` is how the control channel picks another one, e.g. `"L"` for lempiras).
@@ -227,7 +248,7 @@ fn accounting(s: &mut Session, p: &Json) -> Result<Json> {
     set_fmt(s, p, &accounting_format(symbol))
 }
 
-fn accounting_format(symbol: &str) -> String {
+pub(super) fn accounting_format(symbol: &str) -> String {
     let symbol = format!("\"{symbol}\"");
     format!("_({symbol}* #,##0.00_);_({symbol}* \\(#,##0.00\\);_({symbol}* \"-\"??_);_(@_)")
 }
@@ -811,18 +832,17 @@ fn decimals(s: &mut Session, p: &Json, delta: i32) -> Result<Json> {
     let new = adjust_decimals(&code, &sh.value(a), delta);
     set_fmt(s, p, &new)
 }
+}
+#[cfg(feature = "editing")]
+pub use full::{adjust_decimals, format_code_for, specs};
+#[cfg(feature = "editing")]
+pub(crate) use full::{apply_style, color_param, merge_json};
+#[cfg(feature = "editing")]
+use full::{ACCOUNTING, COMMA};
+#[cfg(all(feature = "editing", test))]
+use full::accounting_format;
 
-pub use gridcraft_model::points_to_chars;
-
-mod cell_styles;
-mod sizes;
-
-use cell_styles::cell_style;
-pub use cell_styles::{CELL_STYLE_NAMES, builtin_cell_style};
-pub use sizes::{approx_text_width, chars_to_points};
-use sizes::{autofit_cols, autofit_rows, col_width, default_width, hide, row_height};
-
-#[cfg(test)]
+#[cfg(all(feature = "editing", test))]
 mod tests {
     use super::*;
 

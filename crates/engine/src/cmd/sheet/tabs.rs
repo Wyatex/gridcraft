@@ -1,5 +1,13 @@
+#[cfg(feature = "editing")]
 use super::{Arc, Ctx, EngineError, Json, Result, Session, Sheet, Visibility, bad, bool_param, edit, json, ok, str_param, target_sheet};
+#[cfg(not(feature = "editing"))]
+use gridcraft_model::Visibility;
+#[cfg(not(feature = "editing"))]
+use serde_json::{Value as Json, json};
+#[cfg(not(feature = "editing"))]
+use super::super::{Result, Session, ok, target_sheet};
 
+#[cfg(feature = "editing")]
 pub(super) fn insert_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     if s.doc()?.wb.protected_structure {
         return Err(EngineError::Other("The workbook is protected and cannot be changed.".into()));
@@ -32,10 +40,12 @@ pub(super) fn insert_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(json!({"index": idx, "name": name}))
 }
 
+#[cfg(feature = "editing")]
 fn edit_doc<R>(d: &mut crate::DocState, f: impl FnOnce(&mut Ctx) -> Result<R>) -> Result<R> {
     crate::cmd::commit(d, f)
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn delete_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     let i = target_sheet(s, p)?;
     let d = s.doc()?;
@@ -74,6 +84,7 @@ pub(super) fn delete_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     ok()
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn rename_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     if s.doc()?.wb.protected_structure {
         return Err(EngineError::Other("The workbook is protected and cannot be changed.".into()));
@@ -108,6 +119,7 @@ pub(super) fn rename_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn move_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     if s.doc()?.wb.protected_structure {
         return Err(EngineError::Other("The workbook is protected and cannot be changed.".into()));
@@ -219,6 +231,7 @@ pub(super) fn move_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn tab_color(s: &mut Session, p: &Json) -> Result<Json> {
     let i = target_sheet(s, p)?;
     let c = crate::cmd::format::color_param(p.get("color"));
@@ -228,6 +241,7 @@ pub(super) fn tab_color(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn hide_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     if s.doc()?.wb.protected_structure {
         return Err(EngineError::Other("The workbook is protected and cannot be changed.".into()));
@@ -245,6 +259,7 @@ pub(super) fn hide_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     })
 }
 
+#[cfg(feature = "editing")]
 pub(super) fn unhide_sheet(s: &mut Session, p: &Json) -> Result<Json> {
     if s.doc()?.wb.protected_structure {
         return Err(EngineError::Other("The workbook is protected and cannot be changed.".into()));

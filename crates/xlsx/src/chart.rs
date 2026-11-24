@@ -2,17 +2,26 @@
 //! model, and writing model charts (with cached series values) from scratch.
 
 use std::collections::HashMap;
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
 use craft_drawingml::chart::{Chart as DmlChart, ChartType, Trendline as DmlTrendline, TrendlineType};
 use craft_drawingml::color::SchemeSlot;
 use craft_drawingml::style::{ColorBase, ColorRef as DmlColor, Fill as DmlFill};
+#[cfg(feature = "write")]
 use gridcraft_core::{RangeRef, Value, category_levels};
+#[cfg(feature = "write")]
 use gridcraft_formula::{Expr, SheetSel};
-use gridcraft_model::{Chart, ChartDataTable, ChartKind, Color, DefinedName, LegendPos, LineDash, Series, Trendline, TrendlineKind, Workbook};
+#[cfg(feature = "write")]
+use gridcraft_model::{DefinedName, Workbook};
+use gridcraft_model::{Chart, ChartDataTable, ChartKind, Color, LegendPos, LineDash, Series, Trendline, TrendlineKind};
 
-use crate::drawing::{dml_color, srgb};
-use crate::xml::{El, esc, num};
+use crate::drawing::dml_color;
+#[cfg(feature = "write")]
+use crate::drawing::srgb;
+#[cfg(feature = "write")]
+use crate::xml::{esc, num};
+use crate::xml::El;
 
 // ---------------------------------------------------------------- reading
 
@@ -463,7 +472,16 @@ pub fn read_chart(root: &El) -> Option<Chart> {
     Some(from_dml_chart(dc, Some(root)))
 }
 
+/// A PivotChart link without the workbook in brackets: `[Book.xlsx]Sheet2!PT` → `Sheet2!PT`.
+fn strip_book(link: &str) -> &str {
+    link.strip_prefix('[').and_then(|r| r.split_once(']')).map_or(link, |(_, rest)| rest)
+}
+
 // ---------------------------------------------------------------- writing
+
+#[cfg(feature = "write")]
+mod write_imp {
+    use super::*;
 
 #[derive(Clone, Copy, PartialEq)]
 enum G {
@@ -975,11 +993,6 @@ fn axis_xml(a: &Ax<'_>) -> String {
     s
 }
 
-/// A PivotChart link without the workbook in brackets: `[Book.xlsx]Sheet2!PT` → `Sheet2!PT`.
-fn strip_book(link: &str) -> &str {
-    link.strip_prefix('[').and_then(|r| r.split_once(']')).map_or(link, |(_, rest)| rest)
-}
-
 /// Chart part XML for a model chart on sheet `si`.
 pub fn write_chart(wb: &Workbook, si: usize, ch: &Chart, book_name: &str) -> String {
     let mut s = String::from(
@@ -1142,3 +1155,9 @@ pub fn write_chart(wb: &Workbook, si: usize, ch: &Chart, book_name: &str) -> Str
     s.push_str("<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart></c:chartSpace>");
     s
 }
+}
+
+#[cfg(feature = "write")]
+pub use write_imp::write_chart;
+#[cfg(feature = "write")]
+pub(crate) use write_imp::ref_values;

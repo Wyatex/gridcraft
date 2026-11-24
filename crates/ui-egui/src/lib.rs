@@ -15,21 +15,34 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
     ..craft_update::suite::GRIDCRAFT
 };
 
+#[cfg(feature = "full")]
 pub mod backstage;
+#[cfg(feature = "full")]
 mod border_preview;
 mod cell_pictures;
 mod chartcache;
 pub mod chartview;
+#[cfg(feature = "full")]
 pub mod code_editor;
+mod combo;
+#[cfg(feature = "full")]
 pub mod control;
+#[cfg(feature = "full")]
 pub mod control_ui;
 mod craft_fonts_policy;
+#[cfg(feature = "full")]
 pub mod credits;
+#[cfg(feature = "full")]
+pub mod dialogs;
+#[cfg(not(feature = "full"))]
+#[path = "preview_dialogs.rs"]
 pub mod dialogs;
 pub mod dnd;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod doc_windows;
+#[cfg(feature = "full")]
 pub mod editor;
+#[cfg(feature = "full")]
 pub mod equation;
 mod floating_pictures;
 pub mod fonts;
@@ -37,23 +50,33 @@ pub mod form_controls;
 pub mod formula_bar;
 mod formula_locale;
 pub mod frame;
+#[cfg(feature = "full")]
 pub mod function_library;
 pub mod grid;
 pub mod i18n;
 pub mod icons;
 pub mod keymap;
+#[cfg(feature = "full")]
 pub mod keytips;
+#[cfg(feature = "full")]
 pub mod macro_editor;
+#[cfg(feature = "full")]
 pub mod macro_ui;
 pub mod objects;
 pub mod outline;
+#[cfg(feature = "full")]
 pub mod panes;
+#[cfg(feature = "full")]
 pub mod paper_view;
+#[cfg(feature = "full")]
 pub mod pivot_pane;
+#[cfg(feature = "full")]
 pub mod printing;
+#[cfg(feature = "full")]
 pub mod ribbon;
 pub mod selection_glide;
 pub mod tabs;
+#[cfg(feature = "full")]
 pub mod text_box;
 mod text_direction;
 pub mod theme;
@@ -61,6 +84,7 @@ pub mod theme;
 mod updates_ui;
 pub mod widgets;
 mod window_ui;
+#[cfg(feature = "full")]
 pub mod wordart;
 
 pub use window_ui::WindowUi;
@@ -72,6 +96,7 @@ use gridcraft_engine::{Session, UiRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "full")]
 pub use control::{ControlRequest, ControlResponse};
 
 mod app;
@@ -237,34 +262,48 @@ pub struct Perf {
 
 pub struct SheetApp {
     pub session: Session,
+    /// Prevents cell, object and workbook editing in hosts that embed the sheet as a viewer.
+    pub read_only: bool,
     pub ui: UiState,
     /// The window chrome to draw (see [`Chrome`]).
     pub chrome: Chrome,
     /// Scroll position per (window id, sheet uid): each sheet keeps its own when sheets are
     /// inserted, deleted or moved.
     pub views: HashMap<(u64, u64), SheetView>,
+    #[cfg(feature = "full")]
     pub editor: Option<editor::EditState>,
+    #[cfg(feature = "full")]
     pub text_box_editor: Option<text_box::EditState>,
     pub dialog: Option<dialogs::Dialog>,
     /// The File tab's Backstage view, when open (UI-only; replaces the ribbon, grid and tabs).
+    #[cfg(feature = "full")]
     pub backstage: Option<backstage::Backstage>,
     pub message: Option<(String, String)>,
     pub toast: Option<(String, f64)>,
     /// Dismissible info bar under the ribbon (open-time notices).
     pub notice: Option<Notice>,
+    /// Whether the informational warning emitted when importing legacy `.xls` files is shown.
+    /// Hosts that present their own import status can turn this off without hiding other warnings.
+    pub show_xls_import_notice: bool,
     pub services: Services,
+    #[cfg(feature = "full")]
     pub printing: printing::State,
+    #[cfg(feature = "full")]
     print_feedback_seen: Option<printing::Feedback>,
     /// Synthetic input from agents, one batch per step (drags need several steps).
+    #[cfg(feature = "full")]
     pub synthetic: std::collections::VecDeque<Vec<egui::Event>>,
     /// The front synthetic batch was injected into `RawInput` but no `ui` pass has applied it
     /// yet. eframe retains that unconsumed input across hidden logic-only ticks; the flag makes
     /// the hook offer it once and asks for a hidden paint until a UI pass applies it.
+    #[cfg(feature = "full")]
     pub(crate) synthetic_pending: bool,
     /// `cumulative_pass_nr` when the front batch was last injected. A completed egui pass that
     /// did not apply it (the font gate's early return) consumed the events with `begin_pass`
     /// without reaching input handling, so the hook must offer the same step again.
+    #[cfg(feature = "full")]
     pub(crate) synthetic_injected_at_pass: Option<u64>,
+    #[cfg(feature = "full")]
     pub control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     pub grid: grid::GridState,
     pub perf: Perf,
@@ -290,17 +329,22 @@ pub struct SheetApp {
     desktop_dark: Option<bool>,
     pub name_box: Option<String>,
     /// Transient ribbon keyboard navigation; never saved with UI preferences.
+    #[cfg(feature = "full")]
     pub keytips: keytips::KeyTips,
+    #[cfg(feature = "full")]
     pub(crate) shots: control::Shots,
     /// Monotonic epoch of [`control::CaptureGeometry`]: any resize/DPI/zoom/surface change bumps
     /// it, including a change back to an earlier value, so a capture taken in another layout is
     /// never saved against the current geometry.
+    #[cfg(feature = "full")]
     pub(crate) capture_epoch: u64,
     /// The geometry `capture_epoch` describes; `None` before the first frame.
+    #[cfg(feature = "full")]
     pub(crate) capture_geometry: Option<control::CaptureGeometry>,
     /// The recorded geometry came from a native `RawInput` frame (see `raw_input_hook`). When
     /// false (a bare test/embedder that never runs the hook) capture code falls back to egui's
     /// current input instead of reusing a stale recorded value.
+    #[cfg(feature = "full")]
     pub(crate) capture_geometry_from_raw: bool,
     /// The floating object selected on the sheet (chart, picture, shape, equation or slicer).
     pub selected_object: Option<gridcraft_engine::model::ObjRef>,
@@ -318,6 +362,7 @@ pub struct SheetApp {
     /// Enter on that cell goes to the next row in the starting column, as in Excel (#911).
     tab_run: Option<(u64, usize, u32, CellRef)>,
     /// Automate › Macros: relative recording, recent macros, a macro's question.
+    #[cfg(feature = "full")]
     pub macros: macro_ui::MacroUi,
     pub started: f64,
     /// Every unsaved workbook has been answered for quitting (or `app.quit` asked): the next
@@ -351,6 +396,11 @@ pub struct SheetApp {
 
 /// Strips the engine's error prefixes for message boxes.
 pub fn clean_error(e: &str) -> String {
+    if e.starts_with("command `")
+        && let Some((_, rest)) = e.split_once("` is not available right now: ")
+    {
+        return rest.to_string();
+    }
     if let Some(rest) = e.split_once("`: ").map(|(_, r)| r) {
         return rest.to_string();
     }

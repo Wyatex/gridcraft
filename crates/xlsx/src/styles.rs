@@ -2,16 +2,24 @@
 //! the workbook's style table.
 
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
-use gridcraft_model::style::{DxfStated, Protection};
+#[cfg(feature = "write")]
+use gridcraft_model::style::DxfStated;
+use gridcraft_model::style::Protection;
+#[cfg(feature = "write")]
+use gridcraft_model::Workbook;
 use gridcraft_model::{
     Alignment, BorderLine, BorderStyle, Borders, Color, Fill, Font, HAlign, NumFmt, PatternType, ReadingOrder, Style, Underline, VAlign, VertAlign,
-    Workbook,
 };
 
-use crate::tables::{INDEXED, builtin_format, builtin_id};
-use crate::xml::{El, esc_attr, num};
+#[cfg(feature = "write")]
+use crate::tables::builtin_id;
+use crate::tables::{INDEXED, builtin_format};
+#[cfg(feature = "write")]
+use crate::xml::{esc_attr, num};
+use crate::xml::El;
 
 // ---------------------------------------------------------------- reading
 
@@ -134,6 +142,7 @@ fn pattern_from(s: &str) -> PatternType {
     }
 }
 
+#[cfg(feature = "write")]
 fn pattern_name(p: PatternType) -> &'static str {
     match p {
         PatternType::None => "none",
@@ -206,6 +215,7 @@ fn border_style(s: &str) -> BorderStyle {
     }
 }
 
+#[cfg(feature = "write")]
 fn border_style_name(s: BorderStyle) -> &'static str {
     match s {
         BorderStyle::None => "none",
@@ -454,6 +464,10 @@ pub fn read_x14_dxf(x: &El, palette: &[u32], fmts: &HashMap<u32, String>) -> Sty
 
 // ---------------------------------------------------------------- writing
 
+#[cfg(feature = "write")]
+mod write_imp {
+    use super::*;
+
 pub fn color_attrs(c: &Color) -> String {
     match *c {
         Color::Auto => "auto=\"1\"".into(),
@@ -573,7 +587,7 @@ fn border_xml(b: &Borders) -> String {
     s
 }
 
-fn alignment_xml(a: &Alignment) -> Option<String> {
+pub(super) fn alignment_xml(a: &Alignment) -> Option<String> {
     if *a == Alignment::default() {
         return None;
     }
@@ -843,6 +857,10 @@ pub fn dxf_id(dxfs: &mut Vec<Style>, s: &Style) -> u32 {
     dxfs.push(s.clone());
     (dxfs.len() - 1) as u32
 }
+}
+
+#[cfg(feature = "write")]
+pub use write_imp::{NumFmts, color_attrs, dxf_id, dxf_xml, write_styles};
 
 #[cfg(test)]
 mod tests {
@@ -854,10 +872,12 @@ mod tests {
             let xml = format!("<alignment{attribute}/>");
             let align = read_alignment(&crate::xml::parse(xml.as_bytes()).unwrap());
             assert_eq!(align, Alignment::default(), "{attribute}");
-            assert_eq!(alignment_xml(&align), None);
+            #[cfg(feature = "write")]
+            assert_eq!(super::write_imp::alignment_xml(&align), None);
         }
     }
 
+    #[cfg(feature = "write")]
     #[test]
     fn reading_order_survives_cell_named_and_differential_style_roundtrips() {
         for order in [0, 1, 2] {

@@ -1,23 +1,45 @@
 //! Worksheets and structure: insert/delete rows, columns and cells; sheet tabs.
 
+#[cfg(feature = "editing")]
 use std::sync::Arc;
 
+#[cfg(feature = "editing")]
 use gridcraft_core::{CellRef, MAX_COLS, MAX_ROWS, RangeRef};
+#[cfg(feature = "editing")]
 use gridcraft_formula::adjust::{Axis, Edit};
+#[cfg(feature = "editing")]
 use gridcraft_model::{Anchor, AnchorMode, PivotDataCell, PivotLookup, Sheet, Visibility};
+#[cfg(feature = "editing")]
 use serde_json::{Value as Json, json};
 
+#[cfg(feature = "editing")]
 use super::{
     CommandSpec, Ctx, EngineError, PROTECTED, Result, Session, bad, bool_param, cell_param_on, cmd, edit, has_clipboard, has_doc, ok, parse_lines,
     str_param, target_range, target_sheet, u32_param,
 };
+#[cfg(not(feature = "editing"))]
+use super::{CommandSpec, cmd, has_doc};
 
 mod tabs;
 
-use tabs::{activate, delete_sheet, hide_sheet, insert_sheet, move_sheet, rename_sheet, step_sheet, tab_color, unhide_sheet};
+use tabs::{activate, step_sheet};
+#[cfg(feature = "editing")]
+use tabs::{delete_sheet, hide_sheet, insert_sheet, move_sheet, rename_sheet, tab_color, unhide_sheet};
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
+    let v = vec![
+        cmd!(noundo "sheet.activate", "Activate Sheet", [], None, "{sheet: index | name}", has_doc, activate),
+        cmd!(noundo "sheet.next", "Next Sheet", [], Some("Ctrl+PageDown"), "{}", has_doc, |s, _| step_sheet(s, 1)),
+        cmd!(noundo "sheet.previous", "Previous Sheet", [], Some("Ctrl+PageUp"), "{}", has_doc, |s, _| step_sheet(s, -1)),
+    ];
+    #[cfg(not(feature = "editing"))]
+    {
+        v
+    }
+    #[cfg(feature = "editing")]
+    {
+        let mut v = v;
+        v.extend([
         cmd!(
             "home.insertRows",
             "Insert Sheet Rows",
@@ -61,11 +83,17 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!("sheet.tabColor", "Tab Color", ["Home", "Cells", "Format"], None, "{sheet?, color: \"#FF0000\"|\"none\"}", has_doc, tab_color),
         cmd!("sheet.hide", "Hide Sheet", ["Home", "Cells", "Format", "Hide & Unhide"], None, "{sheet?}", has_doc, hide_sheet),
         cmd!("sheet.unhide", "Unhide Sheet…", ["Home", "Cells", "Format", "Hide & Unhide"], None, "{sheet}", has_doc, unhide_sheet),
-        cmd!(noundo "sheet.activate", "Activate Sheet", [], None, "{sheet: index | name}", has_doc, activate),
-        cmd!(noundo "sheet.next", "Next Sheet", [], Some("Ctrl+PageDown"), "{}", has_doc, |s, _| step_sheet(s, 1)),
-        cmd!(noundo "sheet.previous", "Previous Sheet", [], Some("Ctrl+PageUp"), "{}", has_doc, |s, _| step_sheet(s, -1)),
-    ]
+        ]);
+        v
+    }
 }
+
+#[cfg(feature = "editing")]
+mod full {
+    use super::{
+        Anchor, AnchorMode, Axis, CellRef, Ctx, Edit, EngineError, Json, MAX_COLS, MAX_ROWS, PROTECTED, PivotDataCell, PivotLookup, RangeRef, Result,
+        Session, Sheet, bad, cell_param_on, edit, json, parse_lines, str_param, target_range, target_sheet, u32_param,
+    };
 
 fn lines(s: &Session, p: &Json, axis: Axis) -> Result<(u32, u32)> {
     let key = if axis == Axis::Rows { "rows" } else { "cols" };
@@ -246,14 +274,14 @@ fn shift_sheet_features(sh: &mut Sheet, axis: Axis, at: u32, count: u32, insert:
 }
 
 /// Rewrites every reference the workbook holds for a structural edit on `target`.
-pub(super) fn rewrite(cx: &mut Ctx, target: &str, e: &Edit) -> Result<()> {
+pub(crate) fn rewrite(cx: &mut Ctx, target: &str, e: &Edit) -> Result<()> {
     rewrite_many(cx, target, std::slice::from_ref(e))
 }
 
 /// [`rewrite`] for several edits applied in order, parsing each reference once.
 fn rewrite_many(cx: &mut Ctx, target: &str, edits: &[Edit]) -> Result<()> {
     cx.edits.extend(edits.iter().map(|e| (target.to_string(), e.clone())));
-    super::edit::rewrite_all_formulas_many(&mut cx.wb, target, edits)
+    super::super::edit::rewrite_all_formulas_many(&mut cx.wb, target, edits)
 }
 
 /// Inserting or deleting cells moves the copied block away from the stored source range, so, like
@@ -288,7 +316,7 @@ fn check_push_off_sheet(s: &Session, sheet: usize, axis: Axis, at: u32, count: u
     Ok(())
 }
 
-fn insert_lines(s: &mut Session, p: &Json, axis: Axis) -> Result<Json> {
+pub(super) fn insert_lines(s: &mut Session, p: &Json, axis: Axis) -> Result<Json> {
     let (at, count) = lines(s, p, axis)?;
     let limit = if axis == Axis::Rows { MAX_ROWS } else { MAX_COLS };
     if at.checked_add(count).is_none_or(|end| end > limit) {
@@ -352,7 +380,7 @@ fn delete_areas(s: &Session, p: &Json, axis: Axis) -> Result<Vec<(u32, u32)>> {
     Ok(merged.into_iter().rev().map(|(a, b)| (a, b - a + 1)).collect())
 }
 
-fn delete_lines(s: &mut Session, p: &Json, axis: Axis) -> Result<Json> {
+pub(super) fn delete_lines(s: &mut Session, p: &Json, axis: Axis) -> Result<Json> {
     let areas = delete_areas(s, p, axis)?;
     for &(at, count) in &areas {
         check_lines_protection(s, p, axis, at, count, false)?;
@@ -385,7 +413,7 @@ fn delete_lines(s: &mut Session, p: &Json, axis: Axis) -> Result<Json> {
 
 /// Reorders a contiguous block of whole columns without replacing the destination columns.
 /// `before` is a boundary in the original sheet: moving B:C before E produces A,D,B,C,E.
-fn move_columns(s: &mut Session, p: &Json) -> Result<Json> {
+pub(super) fn move_columns(s: &mut Session, p: &Json) -> Result<Json> {
     let (from, count) = lines(s, p, Axis::Cols)?;
     let before = u32_param(p, "before").ok_or_else(|| bad("sheet.moveColumns", "missing `before`"))?;
     let end =
@@ -507,7 +535,7 @@ fn move_columns(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(out)
 }
 
-fn insert_cells(s: &mut Session, p: &Json) -> Result<Json> {
+pub(super) fn insert_cells(s: &mut Session, p: &Json) -> Result<Json> {
     let shift = str_param(p, "shift").unwrap_or("down");
     let r = target_range(s, p)?;
     match shift {
@@ -547,7 +575,7 @@ fn insert_cells(s: &mut Session, p: &Json) -> Result<Json> {
     Ok(out)
 }
 
-fn delete_cells(s: &mut Session, p: &Json) -> Result<Json> {
+pub(super) fn delete_cells(s: &mut Session, p: &Json) -> Result<Json> {
     let shift = str_param(p, "shift").unwrap_or("up");
     let r = target_range(s, p)?;
     match shift {
@@ -584,7 +612,7 @@ fn delete_cells(s: &mut Session, p: &Json) -> Result<Json> {
 
 /// Insert Copied Cells / Insert Cut Cells: makes room at the destination, then pastes (or, for a
 /// cut, moves) the clipboard there, as one undo step.
-fn insert_copied_cells(s: &mut Session, p: &Json) -> Result<Json> {
+pub(super) fn insert_copied_cells(s: &mut Session, p: &Json) -> Result<Json> {
     let Some(clip) = s.clipboard.clone() else { return Err(EngineError::Other("Nothing to paste.".into())) };
     let sheet = target_sheet(s, p)?;
     let d = s.doc()?;
@@ -822,7 +850,7 @@ fn pre_image(e: &Edit, c: CellRef) -> CellRef {
 
 /// Shifts what Insert/Delete Cells moves along with the cells: merged areas, conditional
 /// format, validation, table, filter and print-area ranges, notes, links and sparklines.
-pub(super) fn shift_cell_features(sh: &mut Sheet, e: &Edit) {
+pub(crate) fn shift_cell_features(sh: &mut Sheet, e: &Edit) {
     let map_cell = |c: CellRef| map_range(RangeRef::cell(c), e).map(|r| r.start);
     sh.merges = sh.merges.iter().filter_map(|m| map_range(*m, e)).filter(|m| !m.is_single()).collect();
     for cf in sh.cond_formats.iter_mut() {
@@ -941,3 +969,8 @@ pub(crate) fn check_table_shift(sh: &Sheet, e: &Edit) -> Result<()> {
     }
     Ok(())
 }
+}
+#[cfg(feature = "editing")]
+use full::{delete_cells, delete_lines, insert_cells, insert_copied_cells, insert_lines, move_columns};
+#[cfg(feature = "editing")]
+pub(crate) use full::{map_range, rewrite, shift_cell_features};

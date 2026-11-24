@@ -1,3 +1,4 @@
+#[cfg(feature = "full")]
 use super::printing;
 
 type PickSave = Box<dyn Fn(&str) -> Option<String>>;
@@ -10,8 +11,10 @@ type PrintPdf = Box<dyn Fn(&[u8])>;
 #[derive(Default)]
 pub struct Services {
     /// Desktop: discover configured printers on a worker.
+    #[cfg(feature = "full")]
     pub printers: Option<printing::Discover>,
     /// Desktop: submit the PDF with the chosen settings on a worker.
+    #[cfg(feature = "full")]
     pub print_native: Option<printing::Submit>,
     pub pick_open: Option<Box<dyn Fn() -> Option<String>>>,
     pub pick_save: Option<PickSave>,
@@ -50,9 +53,9 @@ pub struct Services {
 pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
 
 /// Which parts of the app's own window chrome are drawn. Everything is on by default; a host
-/// that embeds the sheet in its own window (and owns files itself) can turn off the title bar
-/// and the File tab, whose Backstage view then never opens. Not persisted: it describes the
-/// host, not a user preference.
+/// that embeds the sheet in its own window (and owns files itself) can turn off the title bar,
+/// the File tab (whose Backstage view then never opens), and the ribbon. Not persisted: it
+/// describes the host, not a user preference.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Chrome {
     /// The title bar: AutoSave, Home, Save, Undo/Redo, the file name, Comments, Share, Search and
@@ -61,10 +64,12 @@ pub struct Chrome {
     /// The ribbon's File tab and the Backstage view it opens (also reached by keyboard and
     /// commands such as `ui.backstage`).
     pub file_tab: bool,
+    /// The ribbon tabs row and expandable ribbon card.
+    pub ribbon: bool,
 }
 
 impl Default for Chrome {
     fn default() -> Self {
-        Chrome { title_bar: true, file_tab: true }
+        Chrome { title_bar: true, file_tab: true, ribbon: true }
     }
 }

@@ -8,8 +8,12 @@ description = "GridCraft equations: LaTeX laid out as plain glyph, rule and path
 [lints]
 workspace = true
 
+[features]
+default = ["latex"]
+latex = ["dep:ratex-parser", "dep:ratex-layout", "dep:ratex-types", "dep:ratex-font"]
+
 [dependencies]
-ratex-parser = { workspace = true }
-ratex-layout = { workspace = true }
-ratex-types = { workspace = true }
-ratex-font = { workspace = true }
+ratex-parser = { workspace = true, optional = true }
+ratex-layout = { workspace = true, optional = true }
+ratex-types = { workspace = true, optional = true }
+ratex-font = { workspace = true, optional = true }

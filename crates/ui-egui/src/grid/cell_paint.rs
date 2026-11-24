@@ -310,6 +310,7 @@ pub(super) fn paint_cf_icon(p: &Painter, r: Rect, set: &str, idx: usize) {
 }
 
 /// Black or white, whichever reads on `fill` (the threshold chart labels use).
+#[cfg(feature = "full")]
 pub(super) fn ink_on(fill: Color32) -> Color32 {
     let l = 0.299 * fill.r() as f32 + 0.587 * fill.g() as f32 + 0.114 * fill.b() as f32;
     if l < 150.0 { Color32::WHITE } else { Color32::BLACK }

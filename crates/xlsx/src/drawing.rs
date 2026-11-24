@@ -6,16 +6,21 @@
 //! text. Both carry the source in `descr="gridcraft:latex:…"`, which wins on reading; without it,
 //! Office Math in the subset `omml` reads is converted back to LaTeX.
 
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
 use craft_xlsx::{Anchor as CraftAnchor, Drawing as CraftDrawing, Item as CraftItem, Marker as CraftMarker, Placement as CraftPlacement};
 use gridcraft_core::{CellRef, MAX_COLS, MAX_ROWS};
-use gridcraft_model::{Anchor, AnchorMode, Color, Image, Shape, ShapeFormat, ShapeKind, ShapeTextAlign, ShapeTextAnchor, Sheet, Theme};
+#[cfg(feature = "write")]
+use gridcraft_model::Theme;
+use gridcraft_model::{Anchor, AnchorMode, Color, Image, Shape, ShapeFormat, ShapeKind, ShapeTextAlign, ShapeTextAnchor, Sheet};
 
 use crate::IoError;
 use crate::read::Ctx;
 use crate::tables::EMU_PER_PX;
-use crate::xml::{El, esc, esc_attr};
+#[cfg(feature = "write")]
+use crate::xml::esc_attr;
+use crate::xml::{El, esc};
 
 mod ink;
 
@@ -384,10 +389,12 @@ fn first_run_color(e: &El, depth: usize) -> Option<Color> {
 // ---------------------------------------------------------------- writing
 
 /// The size, in points, of the plain-text box that stands in for an equation.
+#[cfg(feature = "write")]
 const PLAIN_TEXT_PT: f32 = 11.0;
 
 /// An equation shape (inside the anchor): Office Math with a plain-text fallback when the source
 /// is in the subset OMML covers, else the plain-text box alone. Both carry the source.
+#[cfg(feature = "write")]
 fn write_equation(s: &mut String, sh: &Shape, id: usize, theme: &Theme) {
     // The font size the equation is drawn at (it scales with its frame), in points.
     let size_pt = sh
@@ -509,6 +516,7 @@ fn holds_written_text(tb: &El, src: &str) -> bool {
     crate::xml::parse(written.as_bytes()).is_ok_and(|w| body_text(&w) == body_text(tb))
 }
 
+#[cfg(feature = "write")]
 fn to_placement(sheet: &Sheet, a: &Anchor) -> CraftPlacement {
     let px = |v: f64| ((v.max(0.0)) * EMU_PER_PX).round() as i64;
     let x1 = sheet.col_left(a.cell.col) + a.dx as f64;
@@ -531,6 +539,7 @@ fn to_placement(sheet: &Sheet, a: &Anchor) -> CraftPlacement {
     }
 }
 
+#[cfg(feature = "write")]
 fn parse_craft_fragment(xml: &str) -> Option<craft_xml::El> {
     let opts = craft_xml::Options::default().with_limits(craft_xml::Limits {
         max_input: crate::package::MAX_PART as usize,
@@ -541,11 +550,13 @@ fn parse_craft_fragment(xml: &str) -> Option<craft_xml::El> {
     opts.parse(xml.as_bytes()).ok()
 }
 
+#[cfg(feature = "write")]
 fn xfrm(a: &Anchor, tag: &str) -> String {
     xfrm_rot(a, tag, 0.0)
 }
 
 /// `deg` is written as `rot`, in 60000ths of a degree.
+#[cfg(feature = "write")]
 fn xfrm_rot(a: &Anchor, tag: &str, deg: f32) -> String {
     let e = |v: f32| ((v.max(0.0) as f64) * EMU_PER_PX).round() as i64;
     let rot = (f64::from(deg.rem_euclid(360.0)) * 60000.0).round() as i64;
@@ -553,12 +564,14 @@ fn xfrm_rot(a: &Anchor, tag: &str, deg: f32) -> String {
     format!("<{tag}{rot}><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{}\" cy=\"{}\"/></{tag}>", e(a.width), e(a.height))
 }
 
+#[cfg(feature = "write")]
 pub fn srgb(c: &Color, theme: &Theme) -> Option<String> {
     let [r, g, b] = c.resolve(theme)?;
     Some(format!("<a:srgbClr val=\"{r:02X}{g:02X}{b:02X}\"/>"))
 }
 
 /// One drawing object to write.
+#[cfg(feature = "write")]
 pub enum Obj<'a> {
     Image(&'a Image, String),
     Chart(&'a gridcraft_model::Chart, String),
@@ -566,6 +579,7 @@ pub enum Obj<'a> {
 }
 
 /// The drawing part for a sheet's objects (relationship ids already assigned).
+#[cfg(feature = "write")]
 pub fn write_drawing(sheet: &Sheet, theme: &Theme, objs: &[Obj<'_>]) -> String {
     let mut items = Vec::with_capacity(objs.len());
     for (i, o) in objs.iter().enumerate() {
@@ -631,6 +645,7 @@ pub fn write_drawing(sheet: &Sheet, theme: &Theme, objs: &[Obj<'_>]) -> String {
     String::from_utf8_lossy(&dr.to_xml()).into_owned()
 }
 
+#[cfg(feature = "write")]
 fn write_plain_shape(s: &mut String, sh: &Shape, id: usize, theme: &Theme) {
     let (prst, tx) = match sh.kind {
         ShapeKind::Rectangle => ("rect", false),
@@ -713,6 +728,7 @@ fn write_plain_shape(s: &mut String, sh: &Shape, id: usize, theme: &Theme) {
 
 /// A text run's `a:rPr` attributes (size, bold, italic) and children in schema order (outline,
 /// fill, typeface).
+#[cfg(feature = "write")]
 fn run_props(f: &ShapeFormat, theme: &Theme) -> (String, String) {
     let mut attrs = String::new();
     if let Some(sz) = f.font_size.filter(|v| v.is_finite()) {
@@ -747,6 +763,7 @@ fn run_props(f: &ShapeFormat, theme: &Theme) -> (String, String) {
 }
 
 /// File extension for an image MIME type.
+#[cfg(feature = "write")]
 pub fn image_ext(mime: &str, data: &[u8]) -> &'static str {
     match mime.to_ascii_lowercase().as_str() {
         "image/png" => "png",
@@ -772,6 +789,7 @@ pub fn image_ext(mime: &str, data: &[u8]) -> &'static str {
     }
 }
 
+#[cfg(feature = "write")]
 pub fn image_content_type(ext: &str) -> &'static str {
     match ext {
         "jpeg" => "image/jpeg",

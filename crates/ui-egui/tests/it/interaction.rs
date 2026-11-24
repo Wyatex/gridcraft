@@ -1567,6 +1567,22 @@ fn plain_open_warning_becomes_an_info_notice() {
 }
 
 #[test]
+fn legacy_xls_import_notice_can_be_suppressed_by_the_host() {
+    let warning = "Imported from an Excel 97-2003 (.xls) workbook: values, formulas, cell formatting, merged cells, column widths, row heights and defined names were read. Charts, pictures, comments and other features are not imported yet. Save as .xlsx; saving .xls is not supported.";
+    let mut h = harness(blank());
+    h.state_mut().show_open_warnings(&json!({"warnings": [warning]}));
+    assert!(h.state().notice.is_some(), "the notice is shown by default");
+
+    h.state_mut().show_xls_import_notice = false;
+    h.state_mut().show_open_warnings(&json!({"warnings": [warning]}));
+    assert!(h.state().notice.is_none(), "a host can hide only the legacy-XLS compatibility notice");
+
+    h.state_mut().session.ui_requests.push(gridcraft_engine::UiRequest::Message(warning.into()));
+    h.state_mut().after_engine();
+    assert!(h.state().message.is_none(), "the same setting also suppresses the modal message");
+}
+
+#[test]
 fn macros_dialog_lists_vba_and_scripts() {
     let mut s = blank();
     let mut wb = gridcraft_engine::model::Workbook::new();
@@ -1737,4 +1753,47 @@ fn header_footer_dialog_opens_on_the_saved_header_and_footer() {
     h.state_mut().run("pageLayout.headerFooter", vals).unwrap();
     let pr = &h.state().session.active().unwrap().wb.active().unwrap().print;
     assert_eq!((pr.header.as_str(), pr.footer.as_str()), ("&CNew", "&CConfidential"));
+}
+
+#[test]
+fn read_only_mode_blocks_cell_moves_deletes_and_typing_without_alerts() {
+    let mut s = blank();
+    s.execute("cell.set", json!({"cell": "A1", "input": "hello"})).unwrap();
+    s.set_read_only(true);
+    let mut h = harness(s);
+    h.state_mut().read_only = true;
+    h.run_steps(2);
+
+    // Dragging across the bottom border of A1 must not fire range.move or show an error alert.
+    let (sh, geo) = {
+        let app = h.state();
+        let sh = app.session.active().unwrap().wb.active().unwrap().clone();
+        let geo = Geo::new(&sh, app.grid.rect.unwrap(), app.view().scroll);
+        (sh, geo)
+    };
+    let a1_rect = geo.cell_rect(&sh, CellRef::new(0, 0));
+    let b2_rect = geo.cell_rect(&sh, CellRef::new(1, 1));
+    let border = egui::pos2(a1_rect.center().x, a1_rect.bottom());
+    h.input_mut().events.push(Event::PointerMoved(border));
+    h.input_mut().events.push(Event::PointerButton { pos: border, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run_steps(1);
+    h.input_mut().events.push(Event::PointerMoved(b2_rect.center()));
+    h.run_steps(1);
+    h.input_mut().events.push(Event::PointerButton { pos: b2_rect.center(), button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert!(h.state().message.is_none(), "read-only border drag should not trigger a command alert");
+    assert_eq!(value(&h, "A1"), Value::text("hello"));
+
+    // Delete and typing must not clear or open the cell editor.
+    click_cell(&mut h, "A1");
+    key(&mut h, Key::Delete, Modifiers::NONE);
+    text(&mut h, "world");
+    assert!(h.state().editor.is_none());
+    assert!(h.state().message.is_none());
+    assert_eq!(value(&h, "A1"), Value::text("hello"));
+
+    // Copy still works in read-only mode.
+    h.input_mut().events.push(Event::Copy);
+    h.run_steps(2);
+    assert_eq!(h.state().session.clipboard.as_ref().map(|c| c.text.trim_end()), Some("hello"));
 }

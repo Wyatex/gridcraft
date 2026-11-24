@@ -1,6 +1,11 @@
+#[cfg(feature = "full")]
 use super::{
     INTERFACE_SCALE_MAX, INTERFACE_SCALE_MIN, Json, Notice, NoticeKind, SheetApp, UiRequest, backstage, clamp_interface_scale, clean_error, dialogs,
     formula_locale, i18n, json, now_ms, printing,
+};
+#[cfg(not(feature = "full"))]
+use super::{
+    INTERFACE_SCALE_MAX, INTERFACE_SCALE_MIN, Json, NoticeKind, SheetApp, UiRequest, clamp_interface_scale, clean_error, dialogs, i18n, json, now_ms,
 };
 
 impl SheetApp {
@@ -21,6 +26,7 @@ impl SheetApp {
             || matches!(id, "view.newWindow" | "view.hideWindow" | "view.unhideWindow")
             || (id == "view.switchWindows" && ["window", "doc"].iter().any(|k| params.get(*k).is_some_and(|d| !d.is_null())));
         if id.starts_with("file.") || switches_window {
+            #[cfg(feature = "full")]
             self.settle_drafts()?;
         }
         if matches!(id, "file.save" | "file.saveAs" | "file.saveBytes") {
@@ -29,6 +35,7 @@ impl SheetApp {
         if let Some(refused) = dialogs::refuse_sheet_change(self, id) {
             return Err(refused);
         }
+        #[cfg(feature = "full")]
         if matches!(
             id,
             "sheet.activate"
@@ -52,17 +59,20 @@ impl SheetApp {
         // The macro editor's unsaved draft is part of its workbook: closing the workbook asks
         // about it first, and goes on once the editor has closed. A close asked while it is
         // asking waits for the answer, or is refused when it asks for a different close.
+        #[cfg(feature = "full")]
         if matches!(id, "file.close" | "window.close")
             && let Some(r) = crate::macro_editor::ask_before_closing(self, id, &params)
         {
             return r;
         }
+        #[cfg(feature = "full")]
         let before = self.session.active_window();
         let zoom_from = matches!(id, "view.zoom" | "view.zoom100" | "view.zoomToSelection").then(|| crate::grid::Trace::key(self));
         let r = self.session.run(id, params);
         if let Some(from) = zoom_from {
             crate::grid::Trace::keep_through_zoom(self, from);
         }
+        #[cfg(feature = "full")]
         if id.starts_with("file.") && self.session.active_window() != before {
             // File › New or Open from the Backstage view: the window it was in goes back to its sheet.
             self.backstage = None;
@@ -70,6 +80,7 @@ impl SheetApp {
         // Requests the command made (a dialog, a draft) belong to the window it left active.
         self.follow_active_window();
         self.after_engine();
+        #[cfg(feature = "full")]
         if id == "formulas.autoSum"
             && let Some(ed) = self.editor.as_mut()
             && ed.text.starts_with('=')
@@ -94,12 +105,14 @@ impl SheetApp {
         {
             self.selected_object = Some(gridcraft_engine::model::ObjRef::new(gridcraft_engine::model::ObjKind::Chart, chart));
         }
+        #[cfg(feature = "full")]
         if id == "file.exportPdf"
             && let Ok(r) = &r
         {
             self.deliver_pdf(r);
         }
         // The scan stopped at its cell allowance: say that some cells were not checked.
+        #[cfg(feature = "full")]
         if id == "data.circleInvalid"
             && let Ok(r) = &r
             && r.get("truncated").and_then(Json::as_bool) == Some(true)
@@ -119,6 +132,7 @@ impl SheetApp {
 
     pub fn run_or_alert(&mut self, id: &str, params: Json) {
         // A menu/shortcut opens the settings first; the Print page's button submits explicitly.
+        #[cfg(feature = "full")]
         if id == "file.print" {
             if self.services.print_native.is_some() {
                 self.open_backstage(backstage::Page::Print);
@@ -128,6 +142,7 @@ impl SheetApp {
         }
         // Menu-style Export as PDF with no file named: ask where to save, like Save As does.
         // Programmatic callers use `run` and keep getting the PDF bytes back.
+        #[cfg(feature = "full")]
         if id == "file.exportPdf" && self.services.pick_save.is_some() && params.get("path").and_then(Json::as_str).is_none_or(str::is_empty) {
             return self.export_pdf_with_picker(params);
         }
@@ -186,11 +201,14 @@ impl SheetApp {
                 self.viewport_commands.push(egui::ViewportCommand::BeginResize(direction));
                 Ok(Json::Null)
             }
+            #[cfg(feature = "full")]
             "app.checkForUpdates" | "help.checkForUpdates" => {
                 self.check_for_updates();
                 Ok(Json::Null)
             }
+            #[cfg(feature = "full")]
             "ui.printSettings" => printing::settings(&mut self.printing, p, self.services.printers.as_ref()),
+            #[cfg(feature = "full")]
             "ui.printSubmit" => self.submit_print(p.clone()),
             "ui.ribbonTab" => {
                 self.ui.ribbon_tab = p.get("tab").and_then(Json::as_str).unwrap_or("Home").to_string();
@@ -278,6 +296,7 @@ impl SheetApp {
                 self.ui.language = i18n::Language::Ja;
                 Ok(json!({"language": i18n::Language::Ja}))
             }
+            #[cfg(feature = "full")]
             "ui.backstage" => {
                 // `{"page": "info"}` opens File › Info; `{"page": "close"}` returns to the sheet.
                 match p.get("page").and_then(Json::as_str).map(str::trim) {
@@ -299,6 +318,7 @@ impl SheetApp {
                 self.open_dialog(name, p.clone());
                 Ok(json!({"dialog": self.dialog.as_ref().map(|d| d.name())}))
             }
+            #[cfg(feature = "full")]
             "ui.pythonMode" => {
                 // `{"on": true}` starts Python mode on the active cell (or switches the edit in
                 // progress to it), `{"on": false}` leaves it; without `on` it switches. A start
@@ -344,15 +364,21 @@ impl SheetApp {
         for req in self.session.take_ui_requests() {
             match req {
                 UiRequest::Dialog(name, params) => self.open_dialog(&name, params),
+                UiRequest::Message(m) if !self.show_xls_import_notice && super::files::is_xls_import_notice(&m) => {}
                 UiRequest::Message(m) => self.message = Some(("GridCraft".into(), m)),
                 UiRequest::EditCell(text) => {
-                    let text = text.map(|text| {
-                        self.session
-                            .active()
-                            .map(|d| formula_locale::display_template(&text, self.ui.language.formula_locale(), &d.wb, d.wb.active_sheet()))
-                            .unwrap_or(text)
-                    });
-                    self.begin_edit(text, false);
+                    #[cfg(feature = "full")]
+                    {
+                        let text = text.map(|text| {
+                            self.session
+                                .active()
+                                .map(|d| formula_locale::display_template(&text, self.ui.language.formula_locale(), &d.wb, d.wb.active_sheet()))
+                                .unwrap_or(text)
+                        });
+                        self.begin_edit(text, false);
+                    }
+                    #[cfg(not(feature = "full"))]
+                    let _ = text;
                 }
                 UiRequest::InsertName(name) => dialogs::insert_name(self, &name),
                 UiRequest::OpenUrl(u) => {
@@ -362,6 +388,7 @@ impl SheetApp {
                 }
             }
         }
+        #[cfg(feature = "full")]
         self.follow_open_draft();
     }
 
@@ -376,12 +403,14 @@ impl SheetApp {
     }
 
     pub fn open_dialog(&mut self, name: &str, params: Json) {
+        #[cfg(feature = "full")]
         if let Err(e) = self.commit_text_box_edit() {
             self.message = Some(("Text Box".into(), clean_error(&e)));
             return;
         }
         // A protection action taken while a reference box picks on another sheet is for the
         // dialog's sheet: the pick ends, showing that sheet again, before the action is chosen.
+        #[cfg(feature = "full")]
         if matches!(name, "protectSheet" | "unprotectSheet")
             && let Some(mut d) = self.dialog.take()
         {
@@ -418,6 +447,7 @@ impl SheetApp {
                     self.open_path(&path);
                 }
             }
+            #[cfg(feature = "full")]
             "saveAs" => {
                 let suggested = self.session.active().map(|d| d.display_title()).unwrap_or_else(|| "Book1".into());
                 if let Some(pick) = &self.services.pick_save {
@@ -435,13 +465,16 @@ impl SheetApp {
                 }
             }
             // File › Options (`file.options`) and the File tab itself open the Backstage view.
+            #[cfg(feature = "full")]
             "options" => self.open_backstage(backstage::Page::Options),
+            #[cfg(feature = "full")]
             "backstage" => {
                 let page = params.get("page").and_then(Json::as_str).and_then(backstage::Page::parse).unwrap_or(backstage::Page::Home);
                 self.open_backstage(page);
             }
             // The macro step editor stays until it closes itself (its draft, overlays and debug
             // run go with it), so another dialog can't replace it.
+            #[cfg(feature = "full")]
             _ if self.dialog.as_ref().is_some_and(|d| d.name == "macroEditor") => {
                 self.message = Some((
                     "Macro".into(),
@@ -463,6 +496,7 @@ impl SheetApp {
 
     /// Opens the File tab's Backstage view on `page`, committing a cell still being edited first
     /// (File actions work on the whole workbook). A draft that can't be committed keeps the sheet.
+    #[cfg(feature = "full")]
     pub fn open_backstage(&mut self, page: backstage::Page) {
         if !self.chrome.file_tab {
             return;

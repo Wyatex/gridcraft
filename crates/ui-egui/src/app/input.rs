@@ -1,7 +1,15 @@
+#[cfg(feature = "full")]
 use super::{SheetApp, control};
+#[cfg(not(feature = "full"))]
+use super::SheetApp;
 
 impl SheetApp {
     /// Records capture geometry from the fresh raw frame, then offers exactly one pending synthetic batch and tracks whether it was applied.
+    #[cfg(not(feature = "full"))]
+    pub fn raw_input_hook(&mut self, _ctx: &egui::Context, _raw: &mut egui::RawInput) {}
+
+    /// Records capture geometry from the fresh raw frame, then offers exactly one pending synthetic batch and tracks whether it was applied.
+    #[cfg(feature = "full")]
     pub fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         // Capture geometry from this frame's real input before any synthetic event is added. This
         // runs on every native frame, including hidden/minimized logic-only ticks, so a resize,

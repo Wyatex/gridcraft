@@ -1,14 +1,37 @@
 //! A small XML tree built on `quick-xml`, with streaming of repeated elements (worksheet rows,
 //! shared strings) so large parts never need a full tree, plus escaping helpers for writing.
 
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
+#[cfg(feature = "write")]
 use gridcraft_model::{PhoneticProps, PhoneticRun, PhoneticString};
+#[cfg(not(feature = "write"))]
+use gridcraft_model::{PhoneticProps, PhoneticRun};
 use quick_xml::Reader;
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::IoError;
+
+pub const NS_MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+pub const NS_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+pub const XML_DECL: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+
+/// `$A$1:$D$20` (or `$1:$3` / `$A:$C`).
+pub fn abs_range(r: &gridcraft_core::RangeRef) -> String {
+    let c = |col: u32| gridcraft_core::col_to_letters(col);
+    if r.is_full_rows() && !r.is_full_cols() {
+        return format!("${}:${}", r.start.row + 1, r.end.row + 1);
+    }
+    if r.is_full_cols() && !r.is_full_rows() {
+        return format!("${}:${}", c(r.start.col), c(r.end.col));
+    }
+    if r.is_single() {
+        return format!("${}${}", c(r.start.col), r.start.row + 1);
+    }
+    format!("${}${}:${}${}", c(r.start.col), r.start.row + 1, c(r.end.col), r.end.row + 1)
+}
 
 /// Maximum element nesting accepted in any part.
 pub const MAX_DEPTH: usize = 256;
@@ -365,6 +388,7 @@ pub use craft_xml::{esc, esc_attr};
 use craft_xml::{is_xml_char, push_esc};
 
 /// Appends `n` in decimal.
+#[cfg(feature = "write")]
 pub fn push_u64(o: &mut String, mut n: u64) {
     let mut buf = [0u8; 20];
     let mut i = buf.len();
@@ -403,9 +427,12 @@ fn push_a1(o: &mut String, c: gridcraft_core::CellRef) {
 }
 
 // Existing call sites and regression coverage use the production shared codec.
-pub use craft_xlsx::{decode_xstring, encode_xstring};
+pub use craft_xlsx::decode_xstring;
+#[cfg(feature = "write")]
+pub use craft_xlsx::encode_xstring;
 
 /// `<t>` element with `xml:space="preserve"` when needed.
+#[cfg(feature = "write")]
 pub fn t_el(s: &str) -> String {
     let enc = esc(&encode_xstring(s));
     if s.starts_with([' ', '\t', '\n', '\r']) || s.ends_with([' ', '\t', '\n', '\r']) || s.contains('\n') {
@@ -423,6 +450,7 @@ pub fn t_el(s: &str) -> String {
 /// The runs and the properties are independent: `<phoneticPr>` is a valid child of `<si>` on its
 /// own (§18.4.8's `CT_SharedStringItem` allows it without any `rPh`), so a string whose runs were
 /// all dropped still keeps its settings.
+#[cfg(feature = "write")]
 pub fn si_body(text: &str, phonetic: Option<&PhoneticString>) -> String {
     let mut s = t_el(text);
     let Some(p) = phonetic else { return s };
@@ -453,6 +481,7 @@ pub fn si_body(text: &str, phonetic: Option<&PhoneticString>) -> String {
 }
 
 /// Formats a number for an XML attribute/value (shortest round-trip form).
+#[cfg(feature = "write")]
 pub fn num(n: f64) -> String {
     let mut s = String::new();
     push_num(&mut s, n);
@@ -460,6 +489,7 @@ pub fn num(n: f64) -> String {
 }
 
 /// Appends [`num`]`(n)` to `o`.
+#[cfg(feature = "write")]
 pub fn push_num(o: &mut String, n: f64) {
     if !n.is_finite() {
         o.push('0');

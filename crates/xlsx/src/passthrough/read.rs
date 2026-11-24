@@ -600,6 +600,7 @@ fn strip_shapes(vml: &str, drop: &HashSet<u64>) -> String {
 }
 
 /// Shape numbers (`_x0000_s1025` → 1025) used in VML text.
+#[cfg(feature = "write")]
 fn shape_numbers(vml: &str) -> Vec<u64> {
     vml.match_indices("_x0000_s")
         .filter_map(|(i, m)| {
@@ -610,6 +611,7 @@ fn shape_numbers(vml: &str) -> Vec<u64> {
 }
 
 /// The highest shape block VML text claims in `<o:idmap data>` or uses in a shape id.
+#[cfg(feature = "write")]
 pub(super) fn vml_block_max(vml: &str) -> u64 {
     let used = shape_numbers(vml).into_iter().max().unwrap_or(0) / 1024;
     let claimed = vml
@@ -624,12 +626,14 @@ pub(super) fn vml_block_max(vml: &str) -> u64 {
 
 /// The first shape block free in kept VML: GridCraft's own shapes (notes, then form controls) are
 /// numbered from `block * 1024 + 1` when they join it ([`merge_vml`]).
+#[cfg(feature = "write")]
 pub(super) fn first_free_block(kept: &str) -> u64 {
     shape_numbers(kept).into_iter().max().unwrap_or(0) / 1024 + 1
 }
 
 /// Kept VML (controls, OLE objects) plus GridCraft's note and form control shapes: ours get ids
 /// in fresh shape blocks so they can't collide with the kept shapes the sheet XML refers to.
+#[cfg(feature = "write")]
 pub(super) fn merge_vml(kept: &str, ours: &str) -> String {
     let Some(close) = kept.rfind("</xml>") else { return ours.to_string() };
     let block = first_free_block(kept);
@@ -671,6 +675,7 @@ pub(super) fn merge_vml(kept: &str, ours: &str) -> String {
 
 /// The value of the first attribute `name` in XML text `x`, in either quote style (`name="v"` or
 /// `name='v'`), when it has one. The name must start a token (`id` is not the end of `spid`).
+#[cfg(feature = "write")]
 fn attr_value<'a>(x: &'a str, name: &str) -> Option<&'a str> {
     let mut from = 0;
     while let Some(i) = x.get(from..)?.find(name).map(|i| i + from) {

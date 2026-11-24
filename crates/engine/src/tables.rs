@@ -1,8 +1,14 @@
 //! Table styles: how a cell inside a table looks (our own palettes, keyed by the familiar
 //! `TableStyleLight1…21 / Medium1…28 / Dark1…11` names so files round-trip).
 
+#[cfg(feature = "editing")]
 use gridcraft_core::{CellRef, RangeRef};
+#[cfg(not(feature = "editing"))]
+use gridcraft_core::CellRef;
+#[cfg(feature = "editing")]
 use gridcraft_model::{BorderLine, BorderStyle, Borders, Cell, Color, Fill, Formula, PatternType, Sheet, Style, Table, Workbook};
+#[cfg(not(feature = "editing"))]
+use gridcraft_model::{BorderLine, BorderStyle, Borders, Color, Fill, PatternType, Sheet, Style, Table, Workbook};
 
 /// (family, number) from a style name, e.g. `TableStyleMedium2` → ("Medium", 2).
 pub fn parse_style_name(name: &str) -> (&'static str, u32) {
@@ -316,6 +322,7 @@ pub fn gallery() -> Vec<String> {
 
 /// Editing a table's header row renames the column, as in Excel: an empty or repeated header
 /// gets a unique name written back into the cell, and structured references follow the rename.
+#[cfg(feature = "editing")]
 pub(crate) fn sync_headers(cx: &mut crate::cmd::Ctx) {
     if cx.wb.sheets.iter().all(|s| s.tables.is_empty()) {
         return;

@@ -13,6 +13,7 @@
 //! keeps them unchanged; a sheet can hold both, in one `<controls>` element and one VML drawing.
 
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "write")]
 use std::fmt::Write as _;
 
 use gridcraft_core::CellRef;
@@ -20,20 +21,30 @@ use gridcraft_model::{Anchor, AnchorMode, CONTROL_MAX, ControlAction, ControlKin
 
 use crate::package::Rel;
 use crate::read::Ctx;
+#[cfg(feature = "write")]
 use crate::tables::EMU_PER_PX;
+#[cfg(feature = "write")]
 use crate::write::{Out, Rels};
-use crate::xml::{El, esc, esc_attr};
+use crate::xml::El;
+#[cfg(feature = "write")]
+use crate::xml::{esc, esc_attr};
 
+#[cfg(feature = "write")]
 pub const CT_CTRL_PROP: &str = "application/vnd.ms-excel.controlproperties+xml";
 /// The worksheet relationship to a control properties part (MS-XLSX), as Excel writes it.
+#[cfg(feature = "write")]
 pub const REL_CTRL_PROP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/ctrlProp";
+#[cfg(feature = "write")]
 const NS_X14: &str = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
+#[cfg(feature = "write")]
 const NS_MC: &str = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+#[cfg(feature = "write")]
 const NS_XDR: &str = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
 
 /// The most controls read from one sheet.
 const MAX_CONTROLS: usize = 10_000;
 
+#[cfg(feature = "write")]
 fn object_type(k: ControlKind) -> &'static str {
     match k {
         ControlKind::Button => "Button",
@@ -52,6 +63,7 @@ fn kind_of(t: &str) -> Option<ControlKind> {
 }
 
 /// The macro a button runs, as Excel writes it: `[0]!Name` (this workbook).
+#[cfg(feature = "write")]
 fn macro_ref(c: &FormControl) -> Option<String> {
     match &c.action {
         Some(ControlAction::Macro { name, .. }) if !name.trim().is_empty() => Some(format!("[0]!{}", name.trim())),
@@ -66,12 +78,14 @@ fn macro_name(text: &str) -> Option<String> {
 }
 
 /// The cell under a sheet position and the offset into it: (cell, dx, dy).
+#[cfg(feature = "write")]
 fn cell_at(sheet: &Sheet, x: f64, y: f64) -> (CellRef, f64, f64) {
     let (col, row) = (sheet.col_at(x), sheet.row_at(y));
     (CellRef::new(row, col), x - sheet.col_left(col), y - sheet.row_top(row))
 }
 
 /// The two corners of a control: ((from, dx, dy), (to, dx, dy)), offsets in sheet pixels.
+#[cfg(feature = "write")]
 fn corners(sheet: &Sheet, a: &Anchor) -> ((CellRef, f64, f64), (CellRef, f64, f64)) {
     let x1 = sheet.col_left(a.cell.col) + a.dx.max(0.0) as f64;
     let y1 = sheet.row_top(a.cell.row) + a.dy.max(0.0) as f64;
@@ -82,12 +96,14 @@ fn corners(sheet: &Sheet, a: &Anchor) -> ((CellRef, f64, f64), (CellRef, f64, f6
 /// The sheet's controls written out: the `<control>` entries of the worksheet's `<controls>`
 /// element (each in its own `mc:AlternateContent`, with the namespaces it needs, so it can also
 /// join a kept `<controls>` element) and the VML shapes for its drawing.
+#[cfg(feature = "write")]
 pub struct Written {
     pub entries: String,
     pub vml: String,
 }
 
 /// The `<controls>` element for `entries` written by [`write`].
+#[cfg(feature = "write")]
 pub fn controls_element(entries: &str) -> String {
     format!(
         "<mc:AlternateContent xmlns:mc=\"{NS_MC}\"><mc:Choice xmlns:x14=\"{NS_X14}\" Requires=\"x14\"><controls>{entries}</controls></mc:Choice></mc:AlternateContent>"
@@ -96,6 +112,7 @@ pub fn controls_element(entries: &str) -> String {
 
 /// Writes the properties parts and relationships of the sheet's controls. `shape_id(i)` is
 /// control `i`'s VML shape id.
+#[cfg(feature = "write")]
 pub fn write(out: &mut Out, rels: &mut Rels, sheet: &Sheet, shape_id: impl Fn(usize) -> u64) -> Written {
     let mut xml = String::new();
     let mut vml = String::new();
@@ -152,6 +169,7 @@ pub fn write(out: &mut Out, rels: &mut Rels, sheet: &Sheet, shape_id: impl Fn(us
 }
 
 /// The control properties part.
+#[cfg(feature = "write")]
 fn ctrl_prop(c: &FormControl) -> String {
     let mut s = format!("{}<formControlPr xmlns=\"{NS_X14}\" objectType=\"{}\"", crate::write::XML_DECL, object_type(c.kind));
     match c.kind {
@@ -178,6 +196,7 @@ fn ctrl_prop(c: &FormControl) -> String {
 }
 
 /// A control's legacy VML shape.
+#[cfg(feature = "write")]
 fn vml_shape(sheet: &Sheet, c: &FormControl, id: u64, z: usize) -> String {
     let ((from, fdx, fdy), (to, tdx, tdy)) = corners(sheet, &c.anchor);
     let pt = |px: f64| px * 0.75;
@@ -244,6 +263,7 @@ fn vml_shape(sheet: &Sheet, c: &FormControl, id: u64, z: usize) -> String {
 }
 
 /// The VML shape type form controls use.
+#[cfg(feature = "write")]
 pub const SHAPETYPE: &str = "<v:shapetype id=\"_x0000_t201\" coordsize=\"21600,21600\" o:spt=\"201\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path shadowok=\"f\" o:extrusionok=\"f\" strokeok=\"f\" fillok=\"f\" o:connecttype=\"rect\"/><o:lock v:ext=\"edit\" shapetype=\"t\"/></v:shapetype>";
 
 // ---------------------------------------------------------------- reading

@@ -1,8 +1,12 @@
 //! UI formula syntax boundary. Engine commands, control/API callers and XLSX keep English.
+#[cfg(feature = "full")]
 use crate::i18n::Language;
-use gridcraft_engine::formula::{self, FormulaLocale, ParseError};
+#[cfg(feature = "full")]
+use gridcraft_engine::formula::ParseError;
+use gridcraft_engine::formula::{self, FormulaLocale};
 use gridcraft_engine::model::Workbook;
 
+#[cfg(feature = "full")]
 pub(crate) fn canonical(
     text: &str,
     locale: FormulaLocale,
@@ -81,6 +85,7 @@ fn hide_udf_prefix(text: &str, locale: FormulaLocale) -> String {
 
 /// A function's argument hint. The name and separators follow the formula syntax; the argument
 /// names follow the interface language, all of them or none, so a hint never mixes two languages.
+#[cfg(feature = "full")]
 pub(crate) fn signature(name: &str, locale: FormulaLocale, language: Language) -> Option<String> {
     let english = crate::formula_bar::function_signature(locale.canonical_name(name))?;
     let Some((head, args)) = split_signature(&english) else { return Some(english) };
@@ -93,12 +98,14 @@ pub(crate) fn signature(name: &str, locale: FormulaLocale, language: Language) -
 }
 
 /// A function's description in the interface language (English while untranslated).
+#[cfg(feature = "full")]
 pub(crate) fn description(name: &str, locale: FormulaLocale, language: Language) -> Option<String> {
     let english = crate::formula_bar::function_description(locale.canonical_name(name))?;
     Some(language.function_description(&english).map_or(english, str::to_string))
 }
 
 /// `SUM(number1, [number2], ...)` -> `SUM` and its arguments as written.
+#[cfg(feature = "full")]
 fn split_signature(signature: &str) -> Option<(&str, Vec<&str>)> {
     let (head, rest) = signature.split_once('(')?;
     let inner = rest.strip_suffix(')')?;
@@ -107,6 +114,7 @@ fn split_signature(signature: &str) -> Option<(&str, Vec<&str>)> {
 
 /// `[number2]` -> `number`. A bracket can open or close on its own (SWITCH's
 /// `[default_or_value2, result2]`, LAMBDA's `[parameter1, ...]`).
+#[cfg(feature = "full")]
 fn argument_name(arg: &str) -> &str {
     let arg = arg.strip_prefix('[').unwrap_or(arg);
     let arg = arg.strip_suffix(']').unwrap_or(arg);
@@ -114,6 +122,7 @@ fn argument_name(arg: &str) -> &str {
 }
 
 /// `[number2]` -> `[número2]`: brackets, index and `...` stay.
+#[cfg(feature = "full")]
 fn translate_argument(arg: &str, language: Language) -> Option<String> {
     let name = argument_name(arg);
     if name == "..." {
@@ -124,6 +133,7 @@ fn translate_argument(arg: &str, language: Language) -> Option<String> {
 }
 
 /// Avoid suggesting an alias that would call a workbook/table name instead of the function.
+#[cfg(feature = "full")]
 pub(crate) fn completion_name<'a>(name: &'a str, locale: FormulaLocale, wb: &Workbook, sheet: usize) -> &'a str {
     let alias = locale.function_name(name);
     if wb.name(alias, sheet).is_some() || wb.table(alias).is_some() { name } else { alias }
@@ -131,6 +141,7 @@ pub(crate) fn completion_name<'a>(name: &'a str, locale: FormulaLocale, wb: &Wor
 
 /// Engine-generated edit templates use canonical syntax. The only incomplete template is
 /// the bare function opening emitted by Insert Function; typed user input never enters here.
+#[cfg(feature = "full")]
 pub(crate) fn display_template(text: &str, locale: FormulaLocale, wb: &Workbook, sheet: usize) -> String {
     if let Some(name) = text.strip_prefix('=').and_then(|s| s.strip_suffix('('))
         && !name.is_empty()
@@ -141,7 +152,7 @@ pub(crate) fn display_template(text: &str, locale: FormulaLocale, wb: &Workbook,
     display(text, locale, wb, sheet)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "full"))]
 mod tests {
     use super::*;
 

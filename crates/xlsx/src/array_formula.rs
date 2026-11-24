@@ -79,6 +79,7 @@ enum Param {
 }
 
 /// How the writer saves a formula that neither spills nor is a legacy CSE array.
+#[cfg(feature = "write")]
 pub(crate) enum Export {
     /// As it is, without dynamic-array metadata.
     Unchanged,
@@ -88,6 +89,7 @@ pub(crate) enum Export {
     Dynamic,
 }
 
+#[cfg(feature = "write")]
 pub(crate) fn export(wb: &Workbook, sheet: usize, at: CellRef, formula: &Formula, functions: FunctionInfo, names: &mut NameCache) -> Export {
     let Some(expr) = formula.expr_arc() else { return Export::Unchanged };
     let mut explicit = false;
@@ -130,6 +132,7 @@ pub(crate) fn export(wb: &Workbook, sheet: usize, at: CellRef, formula: &Formula
 }
 
 /// `e` without any `@` and the parentheses [`at`] adds with one.
+#[cfg(feature = "write")]
 fn remove_at(e: Expr) -> Expr {
     e.map(&mut |x| match x {
         Expr::Unary(UnOp::At, x) => unwrap_at(*x),

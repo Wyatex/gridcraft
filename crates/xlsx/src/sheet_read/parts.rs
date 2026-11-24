@@ -98,7 +98,7 @@ pub(super) fn apply_craft_note_shapes(shapes: &[craft_xlsx::NoteShape], sheet: &
                 row_px,
             };
             let nb = NoteBox { from: corner(c1, dx1, r1, dy1), to: corner(c2, dx2, r2, dy2), size_pt: s.size_pt };
-            c.note_box = (nb != crate::sheet_write::DEFAULT_NOTE_BOX).then_some(nb);
+            c.note_box = (nb != crate::sheet_read::DEFAULT_NOTE_BOX).then_some(nb);
         }
     }
 }

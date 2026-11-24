@@ -30,6 +30,7 @@ pub struct Geo {
     /// The sheet's used range, from [`SheetLines`].
     pub(super) used: Option<RangeRef>,
     /// Page Layout view: cells sit on pages (`scroll` is then in page-layout units).
+    #[cfg(feature = "full")]
     pub paper: Option<Arc<gridcraft_engine::paper::PageGrid>>,
 }
 
@@ -109,6 +110,7 @@ impl Geo {
             ri,
             ci,
             used: lines.used,
+            #[cfg(feature = "full")]
             paper: None,
         }
     }
@@ -122,10 +124,12 @@ impl Geo {
     }
     /// Page Layout view geometry: `rect` excludes the rulers; cells are drawn at the print scale
     /// on pages laid out by `grid`; frozen panes don't apply (as in Excel).
+    #[cfg(feature = "full")]
     pub fn paged(sh: &Sheet, rect: Rect, scroll: egui::Vec2, grid: Arc<gridcraft_engine::paper::PageGrid>) -> Geo {
         Geo::paged_with_lines(sh, rect, scroll, grid, &SheetLines::of(sh))
     }
     /// [`Geo::paged`] with the sheet's `lines` already built.
+    #[cfg(feature = "full")]
     pub fn paged_with_lines(sh: &Sheet, rect: Rect, scroll: egui::Vec2, grid: Arc<gridcraft_engine::paper::PageGrid>, lines: &SheetLines) -> Geo {
         let mut g = Geo::with_lines(sh, rect, scroll, lines);
         let zoom = (sh.zoom as f32 / 100.0).clamp(0.1, 4.0);
@@ -139,26 +143,39 @@ impl Geo {
         if !self.cells.contains(p) {
             return false;
         }
-        match &self.paper {
+        #[cfg(feature = "full")]
+        return match &self.paper {
             Some(pg) => pg.on_cells(
                 self.scroll.x as f64 + ((p.x - self.cells.left()) / self.z) as f64,
                 self.scroll.y as f64 + ((p.y - self.cells.top()) / self.z) as f64,
             ),
             None => true,
-        }
+        };
+        #[cfg(not(feature = "full"))]
+        true
     }
     /// Scroll offset (in `scroll` units) at which `row` reaches the top of the scrolled area.
     pub fn scroll_top_of(&self, _sh: &Sheet, row: u32) -> f32 {
-        match &self.paper {
+        #[cfg(feature = "full")]
+        return match &self.paper {
             Some(pg) => pg.row_y(row) as f32,
             None => (self.ri.start(row) - self.ri.start(self.fr)) as f32,
+        };
+        #[cfg(not(feature = "full"))]
+        {
+            (self.ri.start(row) - self.ri.start(self.fr)) as f32
         }
     }
     /// Scroll offset (in `scroll` units) at which `col` reaches the left of the scrolled area.
     pub fn scroll_left_of(&self, _sh: &Sheet, col: u32) -> f32 {
-        match &self.paper {
+        #[cfg(feature = "full")]
+        return match &self.paper {
             Some(pg) => pg.col_x(col) as f32,
             None => (self.ci.start(col) - self.ci.start(self.fc)) as f32,
+        };
+        #[cfg(not(feature = "full"))]
+        {
+            (self.ci.start(col) - self.ci.start(self.fc)) as f32
         }
     }
     /// Screen x for a logical x (and back): identity unless the sheet is right-to-left.
@@ -176,6 +193,7 @@ impl Geo {
         self.mirror_rect(self.cell_rect(sh, c))
     }
     pub fn x(&self, _sh: &Sheet, col: u32) -> f32 {
+        #[cfg(feature = "full")]
         if let Some(pg) = &self.paper {
             return self.cells.left() + (pg.col_x(col) - self.scroll.x as f64) as f32 * self.z;
         }
@@ -186,6 +204,7 @@ impl Geo {
         }
     }
     pub fn y(&self, _sh: &Sheet, row: u32) -> f32 {
+        #[cfg(feature = "full")]
         if let Some(pg) = &self.paper {
             return self.cells.top() + (pg.row_y(row) - self.scroll.y as f64) as f32 * self.z;
         }
@@ -217,6 +236,7 @@ impl Geo {
         Rect::from_min_max(a.min, b.max)
     }
     pub fn col_at(&self, _sh: &Sheet, x: f32) -> u32 {
+        #[cfg(feature = "full")]
         if let Some(pg) = &self.paper {
             return pg.col_at(self.scroll.x as f64 + ((x - self.cells.left()) / self.z) as f64);
         }
@@ -228,6 +248,7 @@ impl Geo {
         }
     }
     pub fn row_at(&self, _sh: &Sheet, y: f32) -> u32 {
+        #[cfg(feature = "full")]
         if let Some(pg) = &self.paper {
             return pg.row_at(self.scroll.y as f64 + ((y - self.cells.top()) / self.z) as f64);
         }

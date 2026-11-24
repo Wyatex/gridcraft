@@ -8,26 +8,37 @@ description = "GridCraft engine: sessions, commands, history, clipboard, fill, s
 [lints]
 workspace = true
 
+[features]
+default = ["full"]
+full = ["editing", "calc", "pdf", "latex", "ods", "write", "json-format"]
+editing = ["dep:craft-csv", "dep:image", "dep:unicode-segmentation", "calc"]
+calc = ["dep:gridcraft-functions", "gridcraft-calc/eval", "gridcraft-chart/eval"]
+pdf = ["dep:gridcraft-pdf"]
+latex = ["gridcraft-math/latex", "gridcraft-model/latex", "gridcraft-xlsx/latex"]
+ods = ["gridcraft-xlsx/ods"]
+write = ["gridcraft-xlsx/write"]
+json-format = ["dep:craft-gridcraft-format"]
+
 [dependencies]
 gridcraft-core = { workspace = true }
 gridcraft-numfmt = { workspace = true }
 gridcraft-formula = { workspace = true }
-gridcraft-functions = { workspace = true }
-gridcraft-model = { workspace = true }
-gridcraft-calc = { workspace = true }
+gridcraft-functions = { workspace = true, optional = true }
+gridcraft-model = { path = "../model", default-features = false }
+gridcraft-calc = { path = "../calc", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 web-time = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
-gridcraft-xlsx = { workspace = true }
-craft-csv = { workspace = true }
-craft-gridcraft-format = { workspace = true }
-gridcraft-chart = { workspace = true }
-gridcraft-pdf = { workspace = true }
-gridcraft-math = { workspace = true }
-image = { workspace = true }
-unicode-segmentation = "=1.13.3"
+gridcraft-xlsx = { path = "../xlsx", default-features = false }
+craft-csv = { workspace = true, optional = true }
+craft-gridcraft-format = { workspace = true, optional = true }
+gridcraft-chart = { path = "../chart", default-features = false }
+gridcraft-pdf = { workspace = true, optional = true }
+gridcraft-math = { path = "../math", default-features = false }
+image = { workspace = true, optional = true }
+unicode-segmentation = { version = "=1.13.3", optional = true }
 
 [dev-dependencies]
 gridcraft-xlsx = { workspace = true, features = ["test-support"] }

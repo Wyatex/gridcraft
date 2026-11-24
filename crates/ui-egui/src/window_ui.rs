@@ -8,20 +8,27 @@
 
 use gridcraft_engine::core::CellRef;
 
+#[cfg(feature = "full")]
 use crate::{Notice, SheetApp, backstage, dialogs, editor, grid, keytips, text_box};
+#[cfg(not(feature = "full"))]
+use crate::{Notice, SheetApp, dialogs, grid};
 
 /// One window's parked interface state (see the module docs).
 #[derive(Default)]
 pub struct WindowUi {
+    #[cfg(feature = "full")]
     editor: Option<editor::EditState>,
+    #[cfg(feature = "full")]
     text_box_editor: Option<text_box::EditState>,
     dialog: Option<dialogs::Dialog>,
+    #[cfg(feature = "full")]
     backstage: Option<backstage::Backstage>,
     message: Option<(String, String)>,
     toast: Option<(String, f64)>,
     notice: Option<Notice>,
     grid: grid::GridState,
     name_box: Option<String>,
+    #[cfg(feature = "full")]
     keytips: keytips::KeyTips,
     selected_object: Option<gridcraft_engine::model::ObjRef>,
     tab_run: Option<(u64, usize, u32, CellRef)>,
@@ -56,6 +63,7 @@ impl SheetApp {
     /// Exchanges the per-window fields with `w`. Destructured in full, so a field added to
     /// [`WindowUi`] can't be left out of the swap.
     fn swap_window_ui(&mut self, w: &mut WindowUi) {
+        #[cfg(feature = "full")]
         let WindowUi {
             editor,
             text_box_editor,
@@ -74,15 +82,34 @@ impl SheetApp {
             mode,
             keytip_invoke_next,
         } = w;
+        #[cfg(not(feature = "full"))]
+        let WindowUi {
+            dialog,
+            message,
+            toast,
+            notice,
+            grid,
+            name_box,
+            selected_object,
+            tab_run,
+            open_switch_windows,
+            ribbon_tab,
+            mode,
+            keytip_invoke_next,
+        } = w;
+        #[cfg(feature = "full")]
         std::mem::swap(&mut self.editor, editor);
+        #[cfg(feature = "full")]
         std::mem::swap(&mut self.text_box_editor, text_box_editor);
         std::mem::swap(&mut self.dialog, dialog);
+        #[cfg(feature = "full")]
         std::mem::swap(&mut self.backstage, backstage);
         std::mem::swap(&mut self.message, message);
         std::mem::swap(&mut self.toast, toast);
         std::mem::swap(&mut self.notice, notice);
         std::mem::swap(&mut self.grid, grid);
         std::mem::swap(&mut self.name_box, name_box);
+        #[cfg(feature = "full")]
         std::mem::swap(&mut self.keytips, keytips);
         std::mem::swap(&mut self.selected_object, selected_object);
         std::mem::swap(&mut self.tab_run, tab_run);
@@ -152,6 +179,7 @@ impl SheetApp {
     /// Puts back a dialog that was taken out of window `home`'s fields while it ran. A command
     /// run from the dialog may have switched windows meanwhile; the dialog stays in the window it
     /// was opened in (dropped if that window closed).
+    #[cfg(feature = "full")]
     pub(crate) fn return_dialog(&mut self, home: Option<u64>, d: dialogs::Dialog) {
         if home == self.ui_window {
             self.dialog = Some(d);
@@ -164,6 +192,7 @@ impl SheetApp {
 
     /// The window that shows the dialog `name`: the current one or a parked one. A window that has
     /// closed shows nothing, even while its parked state is still kept.
+    #[cfg(feature = "full")]
     pub(crate) fn window_with_dialog(&self, name: &str) -> Option<u64> {
         if self.dialog.as_ref().is_some_and(|d| d.name == name) {
             return self.ui_window;
@@ -176,7 +205,12 @@ impl SheetApp {
     }
 
     /// Whether a window other than the current one has a cell or text-box draft open.
+    #[cfg(feature = "full")]
     pub fn parked_window_with_draft(&self) -> Option<u64> {
         self.parked.iter().filter(|(_, w)| w.editor.is_some() || w.text_box_editor.is_some()).map(|(id, _)| *id).min()
+    }
+    #[cfg(not(feature = "full"))]
+    pub fn parked_window_with_draft(&self) -> Option<u64> {
+        None
     }
 }

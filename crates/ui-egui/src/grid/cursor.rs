@@ -6,6 +6,7 @@ use super::{CellRef, Color32, CursorIcon, Drag, Pos2, RangeRef, Rect, Sheet, She
 
 /// Decide after interaction so drag start and release use the new state in the same frame.
 pub(super) fn update_cursor(app: &mut SheetApp, ui: &egui::Ui, resp: &egui::Response, geo: &Geo, sh: &Sheet) {
+    #[cfg(feature = "full")]
     if app.text_box_editor.is_some() || app.grid.hf_edit.is_some() {
         return;
     }
@@ -25,7 +26,7 @@ pub(super) fn update_cursor(app: &mut SheetApp, ui: &egui::Ui, resp: &egui::Resp
     }
     // Draw tools and Insert › Controls placement own the cursor over cells, including while
     // recording a stroke or drawing the control.
-    if (!app.session.draw_tool.is_empty() || app.grid.placing.is_some()) && in_cells {
+    if !app.read_only && (!app.session.draw_tool.is_empty() || app.grid.placing.is_some()) && in_cells {
         ctx.set_cursor_icon(CursorIcon::Crosshair);
         return;
     }
@@ -81,7 +82,11 @@ fn hover_cursor(app: &SheetApp, ctx: &egui::Context, resp: &egui::Response, poin
     let on_handle = handle.contains(p) && handle_panes.iter().any(|r| r.contains(p));
     let on_cur_border = on_border(cur_rect, p) && border_panes.iter().any(|r| r.contains(p));
     // The selected object's handles resize it; any object's body moves it.
-    let idle = app.grid.drag == Drag::None && app.editor.is_none();
+    #[cfg(feature = "full")]
+    let not_editing = app.editor.is_none();
+    #[cfg(not(feature = "full"))]
+    let not_editing = true;
+    let idle = app.grid.drag == Drag::None && not_editing;
     let object_handle = if idle { crate::chartview::selected_handle(app, geo, sh, p) } else { None };
     let hit = if idle { crate::chartview::hit(app, geo, sh, p) } else { None };
     // A form control works on click unless it is selected (or Ctrl or Cmd is held).
@@ -91,32 +96,33 @@ fn hover_cursor(app: &SheetApp, ctx: &egui::Context, resp: &egui::Response, poin
     // A corner of the selected chart's values outline resizes the chart's data, where no object covers it.
     let data_handle = if idle && !on_object { crate::chartview::chart_data_handle(app, geo, sh, p).map(|(.., h)| h) } else { None };
     let on_rotate = idle && crate::chartview::selected_rotate(app, geo, sh, p).is_some();
-    if on_rotate {
+    let can_edit = !app.read_only;
+    if can_edit && on_rotate {
         ctx.set_cursor_icon(CursorIcon::Crosshair);
-    } else if let Some((o, _, h)) = object_handle {
+    } else if let Some((o, _, h)) = object_handle.filter(|_| can_edit) {
         let deg = crate::chartview::frame_of(sh, o).0;
         ctx.set_cursor_icon(if deg == 0.0 { h.cursor(geo.rtl) } else { crate::frame::Handle { x: h.sides().0, y: h.sides().1 }.cursor(deg) });
-    } else if let Some(h) = data_handle {
+    } else if let Some(h) = data_handle.filter(|_| can_edit) {
         ctx.set_cursor_icon(h.cursor(geo.rtl));
-    } else if works {
+    } else if can_edit && works {
         ctx.set_cursor_icon(CursorIcon::PointingHand);
-    } else if on_object {
+    } else if can_edit && on_object {
         ctx.set_cursor_icon(CursorIcon::Move);
-    } else if near_col_edge || (in_row_header && row_edge(geo, sh, p.y).is_some()) {
+    } else if can_edit && (near_col_edge || (in_row_header && row_edge(geo, sh, p.y).is_some())) {
         header_edge_cursor(app, ctx, pointer, geo, sh, p, near_col_edge);
-    } else if on_handle && app.editor.is_none() {
+    } else if can_edit && on_handle && not_editing {
         ctx.set_cursor_icon(CursorIcon::Crosshair);
         if app.grid.drag == Drag::None && !pointer.any_down() {
             resp.clone().on_hover_text_at_pointer("Drag to fill cells. Drag from inside a cell to select a range.");
         }
-    } else if in_cells && app.editor.is_none() && on_cur_border {
+    } else if can_edit && in_cells && not_editing && on_cur_border {
         ctx.set_cursor_icon(CursorIcon::Move);
     } else if in_cells {
         ctx.set_cursor_icon(CursorIcon::Cell);
     } else if in_col_header {
         let col = geo.col_at(sh, p.x);
         let selected = sel.ranges.len() == 1 && sel.current().is_full_cols() && sel.current().contains(CellRef::new(0, col));
-        ctx.set_cursor_icon(if selected { CursorIcon::Move } else { CursorIcon::Default });
+        ctx.set_cursor_icon(if can_edit && selected { CursorIcon::Move } else { CursorIcon::Default });
     }
 }
 

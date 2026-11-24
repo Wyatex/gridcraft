@@ -31,14 +31,19 @@ fn edge_sheet(sheets: &[Arc<Sheet>], last: bool) -> Option<usize> {
 /// Switch to sheet `i` from the tab strip or the navigator. In point mode the formula being typed keeps going on the
 /// other sheet; otherwise the edit is committed first.
 fn activate_sheet(app: &mut SheetApp, i: usize) {
-    if app.editor.as_ref().is_some_and(|e| e.can_point()) {
-        let _ = app.session.run("sheet.activate", json!({"sheet": i}));
-    } else {
-        if app.editor.is_some() && !app.commit_edit(0, 0, false, false) {
-            return;
+    #[cfg(feature = "full")]
+    {
+        if app.editor.as_ref().is_some_and(|e| e.can_point()) {
+            let _ = app.session.run("sheet.activate", json!({"sheet": i}));
+        } else {
+            if app.editor.is_some() && !app.commit_edit(0, 0, false, false) {
+                return;
+            }
+            app.run_or_alert("sheet.activate", json!({"sheet": i}));
         }
-        app.run_or_alert("sheet.activate", json!({"sheet": i}));
     }
+    #[cfg(not(feature = "full"))]
+    app.run_or_alert("sheet.activate", json!({"sheet": i}));
 }
 
 /// A tab released with Ctrl held (Cmd on macOS, as for the fill handle) drops a copy of the sheet. Excel for Mac uses
@@ -163,7 +168,7 @@ pub fn sheet_tabs(app: &mut SheetApp, ui: &mut Ui) {
                 let items = app.session.active().map(|d| navigator_items(&d.wb.sheets)).unwrap_or_default();
                 let active = app.session.active().map(|d| d.wb.active_sheet().to_string()).unwrap_or_default();
                 let rows: Vec<(&str, String)> = items.iter().map(|(i, name)| (i.as_str(), name.clone())).collect();
-                if let crate::ribbon::ComboResult::Picked(i) = crate::ribbon::editable_combo(ui, &all, "sheet_navigator", &active, &rows, false)
+                if let crate::combo::ComboResult::Picked(i) = crate::combo::editable_combo(ui, &all, "sheet_navigator", &active, &rows, false)
                     && let Ok(i) = i.parse::<usize>()
                 {
                     activate_sheet(app, i);
@@ -283,79 +288,83 @@ pub fn sheet_tabs(app: &mut SheetApp, ui: &mut Ui) {
                                     if resp.clicked() || (resp.secondary_clicked() && !active) {
                                         activate_sheet(app, i);
                                     }
-                                    if resp.double_clicked() {
-                                        app.grid.renaming_tab = Some(i);
-                                        app.grid.rename_text = name.clone();
-                                    }
-                                    // Drag to reorder; with the copy modifier held, drop a copy instead.
-                                    let copy = drop_copies_sheet(ui.input(|inp| inp.modifiers), ui.ctx().os() == egui::os::OperatingSystem::Mac);
-                                    if resp.dragged() && copy {
-                                        ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
-                                    }
-                                    if resp.drag_stopped()
-                                        && let Some(p) = ui.input(|inp| inp.pointer.interact_pos())
-                                    {
-                                        let dx = p.x - r.center().x;
-                                        let steps = (dx / w).round() as i64;
-                                        if let Some(params) = tab_drop(i, steps, copy) {
-                                            app.run_or_alert("sheet.move", params);
-                                        }
-                                    }
-                                    resp.context_menu(|ui| {
-                                        ui.set_min_width(180.0);
-                                        if ui.button(app.ui.language.tr("Insert Sheet")).clicked() {
-                                            app.run_or_alert("home.insertSheet", json!({"before": i}));
-                                        }
-                                        if ui.button(app.ui.language.tr("Delete")).clicked() {
-                                            app.run_or_alert("home.deleteSheet", json!({"sheet": i}));
-                                        }
-                                        if ui.button(app.ui.language.tr("Rename")).clicked() {
+                                    if !app.read_only {
+                                        if resp.double_clicked() {
                                             app.grid.renaming_tab = Some(i);
                                             app.grid.rename_text = name.clone();
                                         }
-                                        if ui.button(app.ui.language.tr("Move or Copy…")).clicked() {
-                                            app.open_dialog("moveSheet", json!({"sheet": i}));
+                                        // Drag to reorder; with the copy modifier held, drop a copy instead.
+                                        let copy = drop_copies_sheet(ui.input(|inp| inp.modifiers), ui.ctx().os() == egui::os::OperatingSystem::Mac);
+                                        if resp.dragged() && copy {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
                                         }
-                                        if ui.button(app.ui.language.tr("Duplicate")).clicked() {
-                                            app.run_or_alert("sheet.move", json!({"sheet": i, "to": i + 1, "copy": true}));
+                                        if resp.drag_stopped()
+                                            && let Some(p) = ui.input(|inp| inp.pointer.interact_pos())
+                                        {
+                                            let dx = p.x - r.center().x;
+                                            let steps = (dx / w).round() as i64;
+                                            if let Some(params) = tab_drop(i, steps, copy) {
+                                                app.run_or_alert("sheet.move", params);
+                                            }
                                         }
-                                        ui.menu_button(app.ui.language.tr("Tab Color"), |ui| {
-                                            let colors = app.session.active().map(|d| d.wb.theme.colors).unwrap_or_default();
-                                            if let Some(c) = crate::widgets::color_palette_fixed(ui, &colors, app.ui.language.tr("No Color")) {
-                                                app.run_or_alert("sheet.tabColor", json!({"sheet": i, "color": c}));
+                                        resp.context_menu(|ui| {
+                                            ui.set_min_width(180.0);
+                                            if ui.button(app.ui.language.tr("Insert Sheet")).clicked() {
+                                                app.run_or_alert("home.insertSheet", json!({"before": i}));
+                                            }
+                                            if ui.button(app.ui.language.tr("Delete")).clicked() {
+                                                app.run_or_alert("home.deleteSheet", json!({"sheet": i}));
+                                            }
+                                            if ui.button(app.ui.language.tr("Rename")).clicked() {
+                                                app.grid.renaming_tab = Some(i);
+                                                app.grid.rename_text = name.clone();
+                                            }
+                                            if ui.button(app.ui.language.tr("Move or Copy…")).clicked() {
+                                                app.open_dialog("moveSheet", json!({"sheet": i}));
+                                            }
+                                            if ui.button(app.ui.language.tr("Duplicate")).clicked() {
+                                                app.run_or_alert("sheet.move", json!({"sheet": i, "to": i + 1, "copy": true}));
+                                            }
+                                            ui.menu_button(app.ui.language.tr("Tab Color"), |ui| {
+                                                let colors = app.session.active().map(|d| d.wb.theme.colors).unwrap_or_default();
+                                                if let Some(c) = crate::widgets::color_palette_fixed(ui, &colors, app.ui.language.tr("No Color")) {
+                                                    app.run_or_alert("sheet.tabColor", json!({"sheet": i, "color": c}));
+                                                    ui.close();
+                                                }
+                                            });
+                                            ui.separator();
+                                            if ui.button(app.ui.language.tr("Hide")).clicked() {
+                                                app.run_or_alert("sheet.hide", json!({"sheet": i}));
+                                            }
+                                            if ui.button(app.ui.language.tr("Unhide…")).clicked() {
+                                                app.run_or_alert("sheet.unhide", json!({}));
+                                            }
+                                            ui.separator();
+                                            let protected = app.active_sheet_protected();
+                                            if ui
+                                                .button(if protected {
+                                                    app.ui.language.tr("Unprotect Sheet…")
+                                                } else {
+                                                    app.ui.language.tr("Protect Sheet…")
+                                                })
+                                                .clicked()
+                                            {
+                                                app.open_dialog("protectSheet", json!({}));
+                                            }
+                                            if ui.button(app.ui.language.tr("Select All Sheets")).clicked() {
                                                 ui.close();
                                             }
                                         });
-                                        ui.separator();
-                                        if ui.button(app.ui.language.tr("Hide")).clicked() {
-                                            app.run_or_alert("sheet.hide", json!({"sheet": i}));
-                                        }
-                                        if ui.button(app.ui.language.tr("Unhide…")).clicked() {
-                                            app.run_or_alert("sheet.unhide", json!({}));
-                                        }
-                                        ui.separator();
-                                        let protected = app.active_sheet_protected();
-                                        if ui
-                                            .button(if protected {
-                                                app.ui.language.tr("Unprotect Sheet…")
-                                            } else {
-                                                app.ui.language.tr("Protect Sheet…")
-                                            })
-                                            .clicked()
-                                        {
-                                            app.open_dialog("protectSheet", json!({}));
-                                        }
-                                        if ui.button(app.ui.language.tr("Select All Sheets")).clicked() {
-                                            ui.close();
-                                        }
-                                    });
+                                    }
                                 }
                             });
                         });
                 });
-                ui.add_space(6.0);
-                if crate::widgets::icon_button(ui, Icon::Plus, t.text_dim, app.ui.language.tr("New sheet (⇧F11)"), vec2(26.0, 26.0)).clicked() {
-                    app.run_or_alert("home.insertSheet", json!({}));
+                if !app.read_only {
+                    ui.add_space(6.0);
+                    if crate::widgets::icon_button(ui, Icon::Plus, t.text_dim, app.ui.language.tr("New sheet (⇧F11)"), vec2(26.0, 26.0)).clicked() {
+                        app.run_or_alert("home.insertSheet", json!({}));
+                    }
                 }
             }
             if !view.show_horizontal_scroll {
@@ -403,11 +412,15 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
                     gridcraft_engine::Mode::Point => "Point",
                 };
                 text(ui, egui::RichText::new(app.ui.language.tr(mode)).font(theme::ui_font(12.5)).color(t.text_dim));
+                #[cfg(feature = "full")]
                 crate::macro_ui::status(app, ui);
                 if let Some(d) = app.session.active() {
                     if d.wb.vba_project.is_some() {
                         ui.add_space(12.0);
-                        text(ui, egui::RichText::new("Macros preserved (not executed)").font(theme::ui_font(12.5)).color(t.danger));
+                        text(
+                            ui,
+                            egui::RichText::new(app.ui.language.tr("Macros preserved (not executed)")).font(theme::ui_font(12.5)).color(t.danger),
+                        );
                     }
                     if d.wb.calc.mode == gridcraft_engine::model::CalcMode::Manual {
                         ui.add_space(12.0);
@@ -422,7 +435,11 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
                         };
                         text(ui, egui::RichText::new(label).font(theme::ui_font(12.5)).color(t.danger));
                     }
-                    if app.session.clipboard.is_some() && app.editor.is_none() {
+                    #[cfg(feature = "full")]
+                    let show_paste_hint = app.session.clipboard.is_some() && app.editor.is_none();
+                    #[cfg(not(feature = "full"))]
+                    let show_paste_hint = false;
+                    if show_paste_hint {
                         ui.add_space(12.0);
                         text(
                             ui,
@@ -442,7 +459,7 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
                         app.open_dialog("zoom", json!({}));
                     }
                     ui.add_space(4.0);
-                    if crate::widgets::icon_button(ui, Icon::Plus, t.text_dim, "Zoom In", vec2(18.0, 18.0)).clicked() {
+                    if crate::widgets::icon_button(ui, Icon::Plus, t.text_dim, app.ui.language.tr("Zoom In"), vec2(18.0, 18.0)).clicked() {
                         let z = ((zoom as f32 / 10.0).floor() * 10.0 + 10.0).min(400.0);
                         app.run_or_alert("view.zoom", json!({"percent": z}));
                     }
@@ -454,7 +471,7 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
                         let _ = app.session.run("view.zoom", json!({"percent": z.round()}));
                         crate::grid::Trace::keep_through_zoom(app, from);
                     }
-                    if crate::widgets::icon_button(ui, Icon::Minus, t.text_dim, "Zoom Out", vec2(18.0, 18.0)).clicked() {
+                    if crate::widgets::icon_button(ui, Icon::Minus, t.text_dim, app.ui.language.tr("Zoom Out"), vec2(18.0, 18.0)).clicked() {
                         let z = ((zoom as f32 / 10.0).ceil() * 10.0 - 10.0).max(10.0);
                         app.run_or_alert("view.zoom", json!({"percent": z}));
                     }
@@ -472,7 +489,7 @@ pub fn status_bar(app: &mut SheetApp, ui: &mut Ui) {
                             ui.painter().rect_filled(r, 3.0, t.hover);
                         }
                         icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(14.0, 14.0)), icon, t.text_dim);
-                        if resp.on_hover_text(tip).clicked() {
+                        if resp.on_hover_text(app.ui.language.tr(tip)).clicked() {
                             app.run_or_alert(cmd, json!({}));
                         }
                     }

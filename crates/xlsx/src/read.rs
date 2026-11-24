@@ -66,6 +66,7 @@ pub(crate) struct SheetNames {
 
 impl SheetNames {
     /// Records `name` as taken.
+    #[cfg(feature = "write")]
     pub(crate) fn insert(&mut self, name: &str) {
         self.taken.insert(name.to_ascii_lowercase());
     }

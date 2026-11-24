@@ -49,6 +49,7 @@ pub fn builtin_format(id: u32) -> Option<&'static str> {
 /// Id to write for a format code when it is a locale-independent built-in. The currency formats
 /// 5–8 and the accounting formats with a currency, 42 and 44, are written as custom formats because
 /// their meaning depends on the reader's locale.
+#[cfg(feature = "write")]
 pub fn builtin_id(code: &str) -> Option<u32> {
     BUILTIN_FORMATS.iter().find(|(i, c)| *c == code && !matches!(i, 5..=8 | 42 | 44)).map(|(i, _)| *i)
 }
@@ -91,6 +92,7 @@ pub fn paper_name(id: u32) -> Option<&'static str> {
 /// The file ID for a paper name. Spelling is loose like `known_paper`'s — spaces, hyphens,
 /// underscores and parentheses don't matter, and the JIS/ISO and Japanese-envelope spellings the
 /// page-setup commands take are folded onto the name in [`PAPERS`].
+#[cfg(feature = "write")]
 pub fn paper_id(name: &str) -> Option<u32> {
     let norm = |s: &str| s.trim().to_ascii_lowercase().replace([' ', '-', '_', '(', ')'], "");
     let normalized = norm(name);
@@ -112,6 +114,7 @@ pub fn paper_id(name: &str) -> Option<u32> {
 /// Functions introduced after Excel 2007 that files store with the `_xlfn.` prefix. Entries with
 /// `_xlws.` get `_xlfn._xlws.`.
 /// NETWORKDAYS.INTL and WORKDAY.INTL are in the file format's own function list, so they're saved without `_xlfn.` (#3517).
+#[cfg(feature = "write")]
 const FUTURE_FUNCTIONS: &[&str] = &[
     "ACOT",
     "ACOTH",
@@ -281,6 +284,7 @@ const FUTURE_FUNCTIONS: &[&str] = &[
 ];
 
 /// The name to write for a function (`XLOOKUP` → `_xlfn.XLOOKUP`, `FILTER` → `_xlfn._xlws.FILTER`).
+#[cfg(feature = "write")]
 pub fn file_function_name(name: &str) -> Option<String> {
     let u = name.to_ascii_uppercase();
     for f in FUTURE_FUNCTIONS {
@@ -307,6 +311,7 @@ pub fn col_width_to_px(w: f64) -> f32 {
 }
 
 /// Model width (px) → stored column width.
+#[cfg(feature = "write")]
 pub fn px_to_col_width(px: f32) -> f64 {
     let px = (px.max(0.0) as f64).round().min(1790.0);
     let back = |w: f64| col_width_to_px(w) as f64;
@@ -325,6 +330,7 @@ pub fn pt_to_px(pt: f64) -> f32 {
     if !pt.is_finite() || pt <= 0.0 { 0.0 } else { (pt.min(409.5) * 4.0 / 3.0) as f32 }
 }
 
+#[cfg(feature = "write")]
 pub fn px_to_pt(px: f32) -> f64 {
     ((px.max(0.0) as f64) * 0.75 * 100.0).round() / 100.0
 }

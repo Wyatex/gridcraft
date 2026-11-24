@@ -1,5 +1,7 @@
 use super::geo::Geo;
-use super::{CellRef, Painter, Pos2, RangeRef, Rect, Sheet, Stroke, StrokeKind, Tokens, pos2, vec2};
+#[cfg(any(feature = "full", test))]
+use super::RangeRef;
+use super::{CellRef, Painter, Pos2, Rect, Sheet, Stroke, StrokeKind, Tokens, pos2, vec2};
 
 pub fn filter_button_rect(geo: &Geo, sh: &Sheet, c: CellRef) -> Rect {
     let rect = geo.cell_rect(sh, c);
@@ -28,7 +30,11 @@ pub struct TableHeading {
 /// with its header row scrolled out of view and some of its rows still in view (Excel, #1423).
 pub fn heading_table<'a>(geo: &Geo, sh: &'a Sheet, active: CellRef) -> Option<&'a gridcraft_engine::model::Table> {
     // Page Layout view keeps the letters.
-    if geo.paper.is_some() || geo.header_h <= 0.0 {
+    #[cfg(feature = "full")]
+    if geo.paper.is_some() {
+        return None;
+    }
+    if geo.header_h <= 0.0 {
         return None;
     }
     let tb = sh.tables.iter().find(|t| t.header_row && t.range.contains(active))?;
@@ -82,6 +88,7 @@ pub(super) fn is_filter_button(sh: &Sheet, geo: &Geo, p: Pos2) -> bool {
 }
 
 /// The table whose header cell (`row`, `col`) was clicked, not just the first table in the column.
+#[cfg(any(feature = "full", test))]
 pub(super) fn filter_table_range(sh: &Sheet, col: u32, row: u32) -> Option<RangeRef> {
     sh.tables.iter().find(|t| t.range.start.row == row && col >= t.range.start.col && col <= t.range.end.col).map(|t| t.range)
 }
